@@ -70,10 +70,10 @@ test("write errors and stalled writes are bounded", async () => {
   stalled.close();
 });
 
-function fakePort() {
+function fakePort(savedConfig = null, onSave = () => {}) {
   let controller;
   const port = {
-    config: defaults(), commands: [], writes: [], held: [], hold: false, rejectNext: false,
+    config: savedConfig ? { ...savedConfig } : defaults(), commands: [], writes: [], held: [], hold: false, rejectNext: false,
     opened: false, closed: false,
     readable: new ReadableStream({ start(c) { controller = c; } }),
     async open(options) { port.opened = true; port.options = options; },
@@ -101,6 +101,7 @@ function fakePort() {
         } else {
           if (command === "SET") port.config[key] = key.startsWith("invert") ? value === "1" : Number(value);
           if (command === "RESET") port.config = defaults();
+          if (command === "SAVE") onSave({ ...port.config });
           reply = response(command, port.config);
         }
         if (port.hold) port.held.push(reply);
@@ -128,8 +129,13 @@ function fakeDocument() {
 function setupUI() {
   const doc = fakeDocument();
   const ports = [];
+  let persisted = null;
   const serial = {
-    async requestPort() { const port = fakePort(); ports.push(port); return port; },
+    async requestPort() {
+      const port = fakePort(persisted, config => { persisted = config; });
+      ports.push(port);
+      return port;
+    },
     addEventListener() {}
   };
   mount(doc, serial, true);
@@ -274,4 +280,110 @@ test("disconnect cancels in-flight requests and never leaks drafts to a new sess
   assert.equal(ui.el("invertX").checked, false);
   assert.deepEqual(fresh.commands, ["GET"]);
   await ui.disconnect();
+});
+
+
+test("SAVE waits for all SET replies, confirms persistence, and reconnect GET does not assume Saved", async () => {
+  const ui = setupUI();
+  assert.equal(ui.el("save").disabled, true);
+  const port = await ui.connect();
+  assert.equal(ui.el("save").disabled, false);
+  assert.equal(ui.el("save-status").textContent, "保存状態未確認");
+  port.hold = true;
+  ui.el("middleSensitivity").value = "0.25";
+  ui.el("middleSensitivity").fire("input");
+  ui.el("save").fire("click"); // Before debounce expires.
+  await until(() => port.commands.length === 2);
+  assert.equal(port.commands[1], "SET middleSensitivity 0.25");
+  assert.equal(ui.el("save-status").textContent, "Saving…");
+  assert.equal(ui.el("pointer-controls").disabled, true);
+  assert.equal(ui.el("save").disabled, true);
+  port.release();
+  await until(() => port.commands.at(-1) === "SAVE");
+  assert.notEqual(ui.el("save-status").textContent, "Saved");
+  port.release();
+  await until(() => ui.el("save-status").textContent === "Saved");
+  assert.equal(ui.el("save").disabled, false);
+  await ui.disconnect();
+  assert.equal(ui.el("save-status").textContent, "—");
+  assert.equal(ui.el("save").disabled, true);
+  const fresh = await ui.connect();
+  assert.deepEqual(fresh.commands, ["GET"]);
+  assert.equal(ui.el("middleSensitivity-value").textContent, "0.25×");
+  assert.equal(ui.el("save-status").textContent, "保存状態未確認");
+  await ui.disconnect();
+});
+
+test("SET and RESET change Saved to Unsaved without automatically sending SAVE", async () => {
+  const ui = setupUI();
+  const port = await ui.connect();
+  ui.el("save").fire("click");
+  await until(() => ui.el("save-status").textContent === "Saved");
+  ui.el("invertX").checked = true;
+  ui.el("invertX").fire("input");
+  assert.equal(ui.el("save-status").textContent, "Unsaved changes");
+  await until(() => ui.el("invertX-confirmed").textContent === "デバイス確認値: On");
+  assert.equal(ui.el("save-status").textContent, "Unsaved changes");
+  assert.equal(port.commands.filter(line => line === "SAVE").length, 1);
+  ui.el("save").fire("click");
+  await until(() => ui.el("save-status").textContent === "Saved");
+  ui.el("reset").fire("click");
+  await until(() => ui.el("invertX-confirmed").textContent === "デバイス確認値: Off");
+  assert.equal(ui.el("save-status").textContent, "Unsaved changes");
+  await ui.disconnect();
+  await ui.connect(); // Mock reboot loads earlier saved value, not RESET's RAM default.
+  assert.equal(ui.el("invertX").checked, true);
+  await ui.disconnect();
+});
+
+test("SAVE failure never marks Saved and remains retryable", async () => {
+  const ui = setupUI();
+  const port = await ui.connect();
+  port.hold = true;
+  ui.el("save").fire("click");
+  await until(() => port.commands.at(-1) === "SAVE");
+  port.held = [];
+  port.emit('@CONFIG {"ok":false,"error":"SAVE_FAILED"}\n');
+  await until(() => ui.el("message").textContent.includes("SAVE_FAILED"));
+  assert.equal(ui.el("save-status").textContent, "Unsaved changes");
+  assert.equal(ui.el("save").disabled, false);
+  port.hold = false;
+  ui.el("save").fire("click");
+  await until(() => ui.el("save-status").textContent === "Saved");
+  await ui.disconnect();
+});
+
+test("SAVE timeout ignores late success during GET recovery and never marks Saved", async () => {
+  const ui = setupUI();
+  const port = await ui.connect();
+  port.hold = true;
+  ui.el("save").fire("click");
+  await until(() => port.commands.length === 3, 3000);
+  assert.deepEqual(port.commands, ["GET", "SAVE", "GET"]);
+  port.hold = false;
+  port.release(); // Late SAVE success must not establish a saved snapshot.
+  await until(() => ui.el("connection-status").textContent === "Connected");
+  assert.notEqual(ui.el("save-status").textContent, "Saved");
+  assert.match(ui.el("message").textContent, /保存結果は未確認/);
+  assert.equal(ui.el("save").disabled, false);
+  await ui.disconnect();
+});
+
+test("failed SET cancels queued SAVE; rapid repeated Save sends only once", async () => {
+  const ui = setupUI();
+  const port = await ui.connect();
+  port.rejectNext = true;
+  ui.el("invertY").checked = true;
+  ui.el("invertY").fire("input");
+  ui.el("save").fire("click");
+  await until(() => ui.el("message").textContent.includes("INVALID_VALUE"));
+  assert.deepEqual(port.commands, ["GET", "SET invertY 1"]);
+  assert.equal(ui.el("save").disabled, false);
+  port.hold = true;
+  ui.el("save").fire("click");
+  ui.el("save").fire("click");
+  await until(() => port.commands.at(-1) === "SAVE");
+  assert.equal(port.commands.filter(line => line === "SAVE").length, 1);
+  await ui.disconnect();
+  assert.notEqual(ui.el("save-status").textContent, "Saved");
 });

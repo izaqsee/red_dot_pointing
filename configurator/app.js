@@ -24,7 +24,7 @@
         return { kind: "config", response };
       }
       if (response && response.ok === true &&
-          ["GET", "SET", "RESET"].includes(response.command) && validConfig(response.config)) {
+          ["GET", "SET", "RESET", "SAVE"].includes(response.command) && validConfig(response.config)) {
         return { kind: "config", response };
       }
     } catch { /* Malformed lines are isolated; keep receiving. */ }
@@ -72,7 +72,7 @@
       const parsed = parseLine(line);
       if (parsed.kind !== "config" || !pending) return;
       const response = parsed.response;
-      // During resync, a late SET/RESET/error must not complete GET.
+      // During resync, a late SET/RESET/SAVE/error must not complete GET.
       if (!response.ok) {
         if (!pending.resync) finish(protocolError(response.error));
       } else if (response.command === pending.command) {
@@ -175,6 +175,9 @@
     let editTimer = null;
     let busy = false;
     let resetRequested = false;
+    let saveRequested = false;
+    let saved = null; // Only a SAVE success in this connection establishes this.
+    let changedSinceSync = false;
 
     function message(text, kind = "info") {
       byId("message").textContent = text;
@@ -188,8 +191,17 @@
       const ready = connectionState === "connected" && confirmed !== null;
       byId("connect").disabled = !supported || connectionState !== "disconnected";
       byId("disconnect").disabled = !session || connectionState === "disconnecting";
-      byId("pointer-controls").disabled = !ready || resetRequested;
-      byId("reset").disabled = !ready || resetRequested;
+      byId("pointer-controls").disabled = !ready || resetRequested || saveRequested;
+      byId("reset").disabled = !ready || resetRequested || saveRequested;
+      byId("save").disabled = !ready || resetRequested || saveRequested;
+      let saveState = "保存状態未確認";
+      if (!ready) saveState = "—";
+      else if (saveRequested) saveState = "Saving…";
+      else if (drafts.size || resetRequested) saveState = "Unsaved changes";
+      else if (saved) saveState = KEYS.every(key => saved[key] === confirmed[key]) ? "Saved" : "Unsaved changes";
+      else if (changedSinceSync) saveState = "Unsaved changes";
+      byId("save-status").textContent = saveState;
+      byId("save-status").dataset.saved = String(saveState === "Saved");
       const labels = { disconnected: "Disconnected", connecting: "Connecting…", syncing: "Connected · Syncing…", connected: "Connected", disconnecting: "Disconnecting…" };
       byId("connection-status").textContent = labels[connectionState];
       byId("connection-status").dataset.state = connectionState;
@@ -209,12 +221,15 @@
       editTimer = null;
       drafts.clear();
       resetRequested = false;
+      saveRequested = false;
     }
     async function disconnect(reason = "切断しました。再接続できます。", kind = "info") {
       const previous = session;
       session = null; // Ignore responses/tasks belonging to the old connection.
       discardDrafts();
       confirmed = null;
+      saved = null;
+      changedSinceSync = false;
       busy = false;
       connectionState = "disconnecting";
       previous?.protocol.close();
@@ -233,6 +248,8 @@
     async function recover(active) {
       discardDrafts();
       confirmed = null;
+      saved = null;
+      changedSinceSync = true;
       connectionState = "syncing";
       message("応答がtimeoutしました。変更の適用結果をGETで再確認しています。", "error");
       render();
@@ -241,7 +258,7 @@
         if (session !== active) return;
         confirmed = config;
         connectionState = "connected";
-        message("デバイスの現在値を再取得しました。未送信の変更は破棄しました。");
+        message("デバイスの現在値を再取得しました。未送信の変更は破棄しました。保存結果は未確認です。必要ならSaveを再実行してください。");
       } catch (error) {
         if (session === active) await disconnect(`再同期できませんでした: ${error.message}。再接続してください。`, "error");
       }
@@ -250,21 +267,32 @@
       if (busy || !session || connectionState !== "connected") return;
       const active = session;
       const entry = [...drafts.entries()].find(([, draft]) => draft.ready);
-      if (!resetRequested && !entry) return;
+      if (!resetRequested && !entry && !saveRequested) return;
       busy = true;
       const resetting = resetRequested;
+      const saving = saveRequested && !resetting && !entry;
       const [key, draft] = entry || [];
-      const command = resetting ? "RESET" : `SET ${key} ${typeof draft.value === "boolean" ? Number(draft.value) : draft.value.toFixed(2)}`;
-      message(resetting ? "default値へ戻しています…" : "デバイスへ反映しています…");
+      const command = resetting ? "RESET" : saving ? "SAVE" : `SET ${key} ${typeof draft.value === "boolean" ? Number(draft.value) : draft.value.toFixed(2)}`;
+      message(resetting ? "default値へ戻しています…" : saving ? "Flashへ保存しています…" : "デバイスへ反映しています…");
       try {
         const config = await active.protocol.request(command);
         if (session !== active) return;
         confirmed = config;
-        if (resetting) resetRequested = false;
+        if (saving) {
+          saved = { ...config };
+          changedSinceSync = false;
+          saveRequested = false;
+        } else if (resetting) resetRequested = false;
         else if (drafts.get(key) === draft) drafts.delete(key);
-        message("デバイスの応答を確認しました。設定はRAMに反映されています。");
+        if (!saving) changedSinceSync = true;
+        message(saving ? "保存成功をデバイスで確認しました。再起動後もこの設定を読み込みます。" :
+          "デバイスの応答を確認しました。RAMに反映済みです。永続化するにはSaveを押してください。");
       } catch (error) {
         if (session !== active) return;
+        if (saving) {
+          saved = null;
+          changedSinceSync = true;
+        }
         if (error.code === "TIMEOUT") await recover(active);
         else if (error.code?.startsWith("WRITE_FAILED")) await disconnect(`送信エラー: ${error.message}`, "error");
         else {
@@ -328,7 +356,7 @@
     }
     for (const key of KEYS) {
       controls[key].addEventListener("input", () => {
-        if (connectionState !== "connected" || resetRequested) return;
+        if (connectionState !== "connected" || resetRequested || saveRequested) return;
         const value = controls[key].type === "checkbox" ? controls[key].checked : Number(controls[key].value);
         if (typeof value === "number" && (!Number.isFinite(value) || value < 0 || value > 10)) return;
         drafts.set(key, { value, ready: false });
@@ -343,9 +371,18 @@
     byId("connect").addEventListener("click", () => { void connect(); });
     byId("disconnect").addEventListener("click", () => { void disconnect(); });
     byId("reset").addEventListener("click", () => {
-      if (connectionState !== "connected" || resetRequested) return;
+      if (connectionState !== "connected" || resetRequested || saveRequested) return;
       discardDrafts();
       resetRequested = true; // Wait for an in-flight SET before RESET.
+      render();
+      void pump();
+    });
+    byId("save").addEventListener("click", () => {
+      if (connectionState !== "connected" || resetRequested || saveRequested) return;
+      clearTimeout(editTimer);
+      // Flush the latest local proposals before SAVE; never save stale RAM values.
+      for (const draft of drafts.values()) draft.ready = true;
+      saveRequested = true;
       render();
       void pump();
     });

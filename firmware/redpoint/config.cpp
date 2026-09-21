@@ -1,13 +1,13 @@
 #include "config.h"
+#include "config_storage.h"
+
+#include <Arduino.h>
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 namespace {
-constexpr DeviceConfig DEFAULT_CONFIG = {1.00f, 0.40f, false, false};
-constexpr float MIN_SENSITIVITY = 0.0f;
-constexpr float MAX_SENSITIVITY = 10.0f;
 constexpr size_t LINE_CAPACITY = 96;
 constexpr size_t RX_BYTES_PER_LOOP = 32;
 constexpr uint8_t JSON_DECIMALS = 6;
@@ -98,7 +98,9 @@ bool executeLine(Stream &serial) {
     return false;
   }
   if (strcmp(command, "SAVE") == 0) {
-    error(serial, "NOT_IMPLEMENTED");
+    const ConfigSaveResult result = saveDeviceConfig(config);
+    if (result == ConfigSaveResult::Saved) reply(serial, command);
+    else error(serial, result == ConfigSaveResult::InvalidConfig ? "INVALID_CONFIG" : "SAVE_FAILED");
     return false;
   }
   const bool reset = strcmp(command, "RESET") == 0;

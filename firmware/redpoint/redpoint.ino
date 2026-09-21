@@ -1,5 +1,6 @@
 #include <Mouse.h>
 #include "config.h"
+#include "config_storage.h"
 
 // ============================================================
 // Pin assignment
@@ -406,6 +407,9 @@ void handleTrackPointPacket(
 
 void setup() {
 
+  // Load once before PS/2 IRQ/HID initialization; invalid storage uses defaults.
+  loadDeviceConfig(config);
+
   // ----------------------------------------------------------
   // USB Serial
   //
@@ -528,5 +532,20 @@ void loop() {
   if (pollConfigSerial(Serial)) {
     scrollAccX = scrollAccY = 0.0f;
     pointerAccX = pointerAccY = 0.0f;
+  }
+
+  if (takeConfigFlashWrite()) {
+    // EEPROM commit pauses IRQs. Discard partial input and wait for a fresh gap.
+    // No changes to the ISR decoder, normal packet processing or accumulators.
+    noInterrupts();
+    fifoTail = fifoHead;
+    bitIndex = 0;
+    dataByte = 0;
+    parityBit = 0;
+    lastByteMs = millis();
+    haveLastByte = true;
+    interrupts();
+    packetIndex = 0;
+    synced = false;
   }
 }

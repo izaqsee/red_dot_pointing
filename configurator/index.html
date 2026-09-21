@@ -56,10 +56,11 @@
     </section>
 
     <section class="card actions" aria-labelledby="actions-title">
-      <div><h2 id="actions-title">Actions</h2><p class="hint">設定はRAMのみ。デバイスの再起動でdefaultに戻ります。</p></div>
-      <div class="action-buttons"><button id="reset" type="button" disabled>Reset to defaults</button><button type="button" disabled title="Flashへの永続保存は未実装です">Save · 未対応</button></div>
+      <div><h2 id="actions-title">Actions</h2><p class="hint">変更はすぐに反映されます。再起動後も使うにはSave。Resetだけでは保存内容は変わりません。</p></div>
+      <div class="action-buttons"><button id="reset" type="button" disabled>Reset to defaults</button><button id="save" class="primary" type="button" disabled>Save</button><span id="save-status" role="status" aria-live="polite">—</span></div>
+      <p class="hint">再接続直後は保存状態未確認です。Saveの成功応答で保存済みを確認します。保存中はデバイスを動かさず、USBを抜かないでください。</p>
     </section>
-    <footer><span class="local-dot" aria-hidden="true"></span> Local only · 外部送信なし <span class="footer-note">Web Serial / RAM settings</span></footer>
+    <footer><span class="local-dot" aria-hidden="true"></span> Local only · デバイスデータの外部送信なし <span class="footer-note">Web Serial / Persistent settings</span></footer>
     <noscript><p class="message" data-kind="error">Configuratorを使うにはJavaScriptを有効にしてください。</p></noscript>
   </main>
 </body>

@@ -1,11 +1,11 @@
-# RedPoint Serial configuration protocol (phase 1)
+# RedPoint Serial configuration protocol
 
 ## 接続とフレーミング
 
 USB CDC Serialを使用する。接続設定は115200 baud、8N1、flow controlなし。
-HID Mouseは同時に動作する。Web UIとFlash永続化はこのphaseには含まれない。
+HID MouseとWebSerial設定通信は同時に動作する。明示的なSAVEで設定をFlashへ保存する。
 Arduino Philhower RP2040 coreとMouseライブラリを使い、`firmware/redpoint/`
-をスケッチとして開く。同じフォルダの`config.cpp`もビルド対象になる。
+をスケッチとして開く。同じフォルダの`config*.cpp`もビルド対象になる。
 ボードとUSB設定は実機で使用している設定を維持する。
 
 要求はASCIIの1行1コマンド。LF、CRLF、CRを受け付ける。
@@ -83,18 +83,78 @@ SET invertY 0
 
 RAM設定をdefaultに戻す。引数なし。再起動やFlash操作はしない。
 成功応答はGETと同じ構造で`command`が`RESET`になる。
+Flashの保存内容は変更しない。RESET後にSAVEしなければ、再起動後は以前保存した値へ戻る。
+defaultを永続化するにはRESET成功後にSAVEする。
 
 ### SAVE
 
-引数なし。このphaseでは永続化しない。成功と誤認させないよう以下を返す。
-RAM設定は変更しない。再起動・電源断で設定はdefaultに戻る。
+引数なし。現在のRAM上DeviceConfigを検証してFlashへ保存する。
+保存後のFlash再読込・内容一致・CRC/値検証まで成功したときだけ、以下を返す。
+応答のconfigは保存が確認できた値。RAM設定と移動の小数残量は変更しない。
+Flash上のレコードと同一の場合はwrite/eraseを省略して成功を返す。
 
 ```text
 SAVE
-@CONFIG {"ok":false,"error":"NOT_IMPLEMENTED"}
+@CONFIG {"ok":true,"command":"SAVE","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false}}
 ```
 
-### エラー
+保存対象の検証失敗と、保存／照合の失敗を区別する。
+
+```text
+@CONFIG {"ok":false,"error":"INVALID_CONFIG"}
+@CONFIG {"ok":false,"error":"SAVE_FAILED"}
+```
+
+エラー時もRAM設定は変えない。保存失敗時のFlash内容は保証しない。
+成功応答を受信していない場合、hostはSavedと表示してはいけない。
+timeout時はGETでRAM設定を再取得するが、GETはFlash保存成功の証明にはならない。
+遅延したSAVE応答を再同期GETの応答として使用せず、必要なら再同期後にSAVEを再実行する。
+旧firmwareの`NOT_IMPLEMENTED`も通常のデバイスエラーとして扱える。
+
+SETのたびにSAVEしない。ユーザーの明示操作時だけ送信する。
+Configuratorは未送信SETを反映してからSAVEし、その間は設定操作を無効化する。
+再接続時にはGETで現在値を取得し、保存状態は未確認とする（GETはRAMのみを返す）。
+
+## Flash保存形式と起動
+
+Philhower RP2040 core 6.1.0標準EEPROM emulationを使用する。
+coreが予約するFlash末尾の4 KiB sector内、offset 0に次の24-byteレコードを保存する。
+filesystemは不要。多byte値はlittle endian、floatはIEEE-754 binary32。
+C++ structのpaddingやboolのメモリ表現には依存しない。
+
+| Offset | Bytes | 内容 |
+| --- | --- | --- |
+| 0 | 4 | magic: ASCII `RPNT`（uint32 0x544E5052） |
+| 4 | 2 | format version: 1 |
+| 6 | 2 | record length: 24 |
+| 8 | 4 | pointerSensitivity |
+| 12 | 4 | middleSensitivity |
+| 16 | 1 | invertX: 0 / 1 |
+| 17 | 1 | invertY: 0 / 1 |
+| 18 | 2 | reserved: 0 |
+| 20 | 4 | bytes 0～19のCRC-32/ISO-HDLC |
+
+CRCはreflected polynomial 0xEDB88320、初期値0xFFFFFFFF、最終XOR 0xFFFFFFFF。
+拡張時はformat versionとrecord lengthを更新し、必要に応じて移行処理を追加する。
+現versionでは他versionを移行せずdefaultへfallbackする。
+
+setupのPS/2割り込み・HID初期化前に1回loadする。
+magic、version、長さ、CRC、reserved、bool表現、感度の有限性・0～10の範囲をすべて検証する。
+未保存（消去済み領域を含む）またはどれか不正なら4項目すべてdefaultに戻す。
+bootやfallback、SET、RESETではFlashを書かず、壊れたデータの自動修復もしない。
+
+EEPROM.beginはcore内部で256-byteのRAMバッファを起動時に確保する。
+SAVE時だけcommitを呼び、同じサイズでbeginし直してFlashを再読込する（再確保なし）。
+EEPROM.endは暗黙のcommitがあるため使用しない。
+単一sectorをerase/programするので、保存中の電源断で旧設定が失われる可能性がある。
+次回起動はCRCなどで検証し、不正ならdefaultを使用する。二重化やwear levelingは未実装。
+
+commit中はcoreが割り込みを止めるため、SAVE時だけHID/PS/2入力が短時間停止し、
+移動やボタン変化を取りこぼす可能性がある。SAVEは静止中に行い、完了まで電源を維持する。
+main loopのSAVE後に未処理FIFO・途中frame/packetを破棄し、次のpacket gapで再同期する。
+ISR、通常のdecode、pointer変換、debounceは変更しない。
+
+## エラー
 
 すべて`@CONFIG {"ok":false,"error":"CODE"}`形式。
 エラー応答には元の入力を含めない。クライアントは送信中の1要求と対応させる。
@@ -106,7 +166,9 @@ SAVE
 | UNKNOWN_KEY | SETの未知のキー |
 | INVALID_VALUE | キーに対して無効な値・範囲外 |
 | INVALID_LINE | 行が長すぎる、または無効な文字を含む |
-| NOT_IMPLEMENTED | SAVEの永続化は未実装 |
+| INVALID_CONFIG | SAVE対象のRAM設定が不正（Flashを書かない） |
+| SAVE_FAILED | Flash保存または再読込検証に失敗 |
+| NOT_IMPLEMENTED | 旧firmwareのSAVE未対応応答（現firmwareでは返さない） |
 
 ## 実機確認と次phase
 
@@ -115,10 +177,12 @@ SAVE
 - GET、SET middleSensitivity 0.25、SET pointerSensitivity 1.10、両軸反転、RESETを確認する。
 - 0と10の感度、大きな移動でもwrapしないこと、ボタンが独立して動くことを確認する。
 - 分割送信、CR/LF/CRLF、空行、無効値、未知キー、引数過不足、長すぎる行の後にGETで復帰することを確認する。
-- SAVEが未対応を返し、RAMを保持し、電源再投入でdefaultへ戻ることを確認する。
+- SET→SAVE成功→電源再投入で保存値へ戻ることを確認する。
+- SETのみ／RESETのみではFlashが変わらず、再起動後は保存値へ戻ることを確認する。
+- RESET→SAVE→再起動でdefaultへ戻り、未保存・不正レコード時もdefaultへfallbackすることを確認する。
+- SAVE直後のpacket再同期、移動・ボタン・debugの復帰を確認する。
 - DEBUG_INPUTSの0/1、debug中の応答JSON、Serial未接続・切断・再接続中のHID、連続移動中のdrop値を確認する。
 
-次phaseではWebSerialの接続・切断処理、行の組立て、要求の直列化、timeoutと再同期、
-設定UIとエラー表示を実装する。永続化は別途Flash方式・書込頻度・設定versionを設計する。
+次phase候補は保存中の電源断に対する二重化、format migration、実機での長時間検証。
 将来WebHIDへ移行する場合は設定用HID reportとtransportを別途設計する。
-現時点ではUSB descriptorやMouse reportは変更していない。
+USB descriptorやMouse reportは変更していない。
