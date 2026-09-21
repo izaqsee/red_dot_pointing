@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "RedPoint: Build",
+      "type": "shell",
+      "command": "arduino-cli",
+      "args": [
+        "compile",
+        "--fqbn",
+        "rp2040:rp2040:vccgnd_yd_rp2040",
+        "${workspaceFolder}/firmware/redpoint"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "RedPoint: Build & Upload",
+      "type": "shell",
+      "command": "arduino-cli",
+      "args": [
+        "compile",
+        "--fqbn",
+        "rp2040:rp2040:vccgnd_yd_rp2040",
+        "--upload",
+        "--port",
+        "COM13",
+        "${workspaceFolder}/firmware/redpoint"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

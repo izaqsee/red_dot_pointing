@@ -1,4 +1,5 @@
 #include <Mouse.h>
+#include "config.h"
 
 // ============================================================
 // Pin assignment
@@ -92,13 +93,13 @@ ButtonState buttons[3] = {
 };
 
 // ============================================================
-// scroll sensitivity
+// Pointer fractional remainders
 // ============================================================
-
-constexpr float SCROLL_SENSITIVITY = 0.40f;
 
 float scrollAccX = 0.0f;
 float scrollAccY = 0.0f;
+float pointerAccX = 0.0f;
+float pointerAccY = 0.0f;
 
 // ============================================================
 // FIFO
@@ -274,7 +275,7 @@ void updateButtons() {
         (i == 1) ? "MIDDLE" :
                   "RIGHT";
 
-      Serial.print("BTN ");
+      Serial.print("@DEBUG BTN ");
       Serial.print(name);
       Serial.println(pressed ? " DOWN" : " UP");
       #endif
@@ -285,9 +286,7 @@ void updateButtons() {
 // ============================================================
 // TrackPoint packet → USB Mouse
 //
-// 今回は90°回転補正なし。
-// Xはそのまま。
-// YだけPS/2とUSBの方向差を反転。
+// 実機確認済みの軸変換: USB X = PS/2 Y、USB Y = PS/2 X。
 // ============================================================
 
 void handleTrackPointPacket(
@@ -309,6 +308,9 @@ void handleTrackPointPacket(
   if (usbY > 127)  usbY = 127;
   if (usbY < -127) usbY = -127;
 
+  if (config.invertX) usbX = -usbX;
+  if (config.invertY) usbY = -usbY;
+
   // ----------------------------------------------------------
   // Middle button held:
   // pointer sensitivity reduction for autoscroll
@@ -319,9 +321,12 @@ void handleTrackPointPacket(
 
   if (buttons[1].stablePressed) {
 
+    pointerAccX = 0.0f;
+    pointerAccY = 0.0f;
+
     // 小さい移動量を捨てないよう、小数部を蓄積する
-    scrollAccX += usbX * SCROLL_SENSITIVITY;
-    scrollAccY += usbY * SCROLL_SENSITIVITY;
+    scrollAccX += usbX * config.middleSensitivity;
+    scrollAccY += usbY * config.middleSensitivity;
 
     outX = (int16_t)scrollAccX;
     outY = (int16_t)scrollAccY;
@@ -331,21 +336,32 @@ void handleTrackPointPacket(
 
   } else {
 
-    // 通常時は元の感度
-    outX = usbX;
-    outY = usbY;
+    // default 1.00では従来と同一。小数感度の場合だけ残量が生じる。
+    pointerAccX += usbX * config.pointerSensitivity;
+    pointerAccY += usbY * config.pointerSensitivity;
+    outX = (int16_t)pointerAccX;
+    outY = (int16_t)pointerAccY;
+    pointerAccX -= outX;
+    pointerAccY -= outY;
 
     // スクロールモードを抜けたら残りを捨てる
     scrollAccX = 0.0f;
     scrollAccY = 0.0f;
   }
 
+  // 高感度でもint8_tへの変換がwrapしないよう飽和させる。
+  // 飽和した整数分は持ち越さず、小数部のみ保持する。
+  if (outX > 127) outX = 127;
+  if (outX < -127) outX = -127;
+  if (outY > 127) outY = 127;
+  if (outY < -127) outY = -127;
+
 #if DEBUG_INPUTS
   static uint32_t debugPacketCount = 0;
   debugPacketCount++;
 
   if ((debugPacketCount % DEBUG_POINTER_EVERY_N) == 0) {
-    Serial.print("PTR ");
+    Serial.print("@DEBUG PTR ");
 
     Serial.print("raw=(");
     Serial.print(dx);
@@ -436,7 +452,7 @@ void setup() {
   delay(1000);
 
 #if DEBUG_INPUTS
-  Serial.println("WZ RP2040 mouse ready");
+  Serial.println("@DEBUG WZ RP2040 mouse ready");
 #endif
 }
 
@@ -506,5 +522,11 @@ void loop() {
         packetIndex = 0;
       }
     }
+  }
+
+  // FIFO処理後、待機せず固定量だけSerial入力を処理する。
+  if (pollConfigSerial(Serial)) {
+    scrollAccX = scrollAccY = 0.0f;
+    pointerAccX = pointerAccY = 0.0f;
   }
 }
