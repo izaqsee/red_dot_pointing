@@ -1,4 +1,5 @@
 #include "config.h"
+#include "status_led.h"
 #include "config_record.h"
 #include "config_storage.h"
 #include <Arduino.h>
@@ -10,6 +11,10 @@
 #include <limits>
 
 MockEEPROM EEPROM;
+uint32_t testMillis = 0, ledColor = 0;
+int ledShows = 0;
+bool ledCanShow = true;
+void runStatusTests();
 
 void runActionTests();
 bool equalAction(const ButtonAction &a, const ButtonAction &b) {
@@ -112,9 +117,13 @@ int main() {
   assert(saveDeviceConfig(custom) == ConfigSaveResult::StorageError); // Not initialized.
   EEPROM.flash.fill(0xff);
   assert(!loadDeviceConfig(config) && equal(config, DEFAULT_CONFIG));
+  configSetPersistentBaseline(config);
+  assert(!configUnsaved());
   assert(EEPROM.commits == 0 && EEPROM.writes == 0); // Boot never repairs Flash.
   for (size_t i = 0; i < CONFIG_RECORD_SIZE; ++i) EEPROM.flash[i] = record[i];
   assert(loadDeviceConfig(config) && equal(config, custom));
+  configSetPersistentBaseline(config);
+  assert(!configUnsaved());
 
   Stream serial;
   assert(!command(serial, "SAVE\n"));
@@ -123,7 +132,9 @@ int main() {
   assert(command(serial, "RESET\n"));
   assert(equal(config, DEFAULT_CONFIG));
   assert(EEPROM.commits == 0);
-  assert(loadDeviceConfig(config) && equal(config, custom)); // RESET without SAVE.
+  assert(loadDeviceConfig(config) && equal(config, custom));
+  configSetPersistentBaseline(config);
+  assert(!configUnsaved()); // RESET without SAVE.
 
   assert(command(serial, "SET middleSensitivity 0.25\n"));
   assert(EEPROM.commits == 0 && EEPROM.writes == 0);
@@ -151,6 +162,8 @@ int main() {
   command(serial, "SAVE\n");
   assert(serial.output.find("SAVE_FAILED") != std::string::npos); // Readback, not just commit return.
   assert(!loadDeviceConfig(config) && equal(config, DEFAULT_CONFIG));
+  configSetPersistentBaseline(config);
+  assert(!configUnsaved());
   EEPROM.corruptCommit = false;
   command(serial, "SAVE\n");
   assert(serial.output.find("\"ok\":true") != std::string::npos);
@@ -180,6 +193,8 @@ int main() {
   EEPROM.flash.fill(0xff);
   for (size_t i = 0; i < sizeof(legacy); ++i) EEPROM.flash[i] = legacy[i];
   assert(loadDeviceConfig(config) && equal(config, custom));
+  configSetPersistentBaseline(config);
+  assert(!configUnsaved());
   assert(EEPROM.commits == beforeMigration && EEPROM.flash[4] == 1);
   command(serial, "GET\n");
   assert(serial.output.find("\"leftAction\":\"mouse:left\"") != std::string::npos);
@@ -203,5 +218,75 @@ int main() {
   assert(serial.output.find("INVALID_CONFIG") != std::string::npos && EEPROM.commits == savedCount);
   command(serial, "RESET\n"); command(serial, "SAVE\n");
   assert(loadDeviceConfig(config) && equal(config,DEFAULT_CONFIG));
+  runStatusTests();
   std::cout << "PASS: record validation/fallback, load, runtime-only SET/RESET, SAVE validation/readback/failure/wear\n";
+}
+
+void runStatusTests() {
+  statusLedBegin();
+  assert(statusLedState() == StatusLedState::Boot && ledColor == 0xffffff);
+  statusLedEndBoot();
+  assert(statusLedState() == StatusLedState::Normal && ledColor == 0xff);
+  int shows = ledShows;
+  for (int i=0; i<100; ++i) statusLedUpdate();
+  assert(ledShows == shows);
+  statusLedActivity(); statusLedUpdate();
+  assert(statusLedState() == StatusLedState::Connected && ledColor == 0xff00);
+  statusLedSetUnsaved(true); statusLedUpdate();
+  assert(statusLedState() == StatusLedState::Unsaved && ledColor == 0xffff00);
+  statusLedSetSaving(true);
+  assert(statusLedState() == StatusLedState::Saving && ledColor == 0xff00ff);
+  statusLedSignalError(); statusLedUpdate();
+  assert(statusLedState() == StatusLedState::Error && ledColor == 0xff0000);
+  testMillis += 1999; assert(statusLedState() == StatusLedState::Error);
+  statusLedSignalError(); testMillis += 1999; assert(statusLedState() == StatusLedState::Error);
+  ++testMillis; assert(statusLedState() == StatusLedState::Saving);
+  statusLedSetSaving(false); assert(statusLedState() == StatusLedState::Unsaved);
+  testMillis += 6000; assert(statusLedState() == StatusLedState::Unsaved);
+  statusLedSetUnsaved(false); assert(statusLedState() == StatusLedState::Normal);
+  testMillis = 0xfffffff0u; statusLedActivity(); statusLedSignalError();
+  testMillis += 2000; assert(statusLedState() == StatusLedState::Connected);
+  testMillis += 3999; assert(statusLedState() == StatusLedState::Connected);
+  ++testMillis; assert(statusLedState() == StatusLedState::Normal);
+  statusLedUpdate(); shows = ledShows; ledCanShow = false;
+  statusLedActivity(); statusLedUpdate(); assert(ledShows == shows);
+  ledCanShow = true; statusLedUpdate(); assert(ledShows == shows+1);
+  statusLedSetSaving(true); statusLedSetSaving(false);
+  testMillis += 149; assert(statusLedState() == StatusLedState::Saving);
+  ++testMillis; assert(statusLedState() == StatusLedState::Connected);
+  config = DEFAULT_CONFIG; configSetPersistentBaseline(config);
+  Stream serial;
+  command(serial, "SET pointerSensitivity 2\n"); assert(configUnsaved());
+  command(serial, "SET pointerSensitivity 1\n"); assert(!configUnsaved());
+  for (const char *cmd : {"SET middleSensitivity 2\n", "SET invertX 1\n", "SET invertY 1\n",
+       "SET leftAction disabled\n", "SET middleAction disabled\n", "SET rightAction key:01:04\n"}) {
+    command(serial, cmd); assert(configUnsaved());
+    command(serial, "RESET\n"); assert(!configUnsaved());
+  }
+  EEPROM.flash.fill(0xff); loadDeviceConfig(config); configSetPersistentBaseline(config);
+  EEPROM.onCommit = []() { assert(statusLedState() == StatusLedState::Saving && ledColor == 0xff00ff); };
+  command(serial, "SET invertX 1\n"); command(serial, "SAVE\n"); assert(!configUnsaved());
+  EEPROM.onCommit = nullptr;
+  command(serial, "RESET\n"); assert(configUnsaved());
+  EEPROM.commitFails = true; command(serial, "SAVE\n"); assert(configUnsaved());
+  command(serial, "SET invertX 1\n"); assert(!configUnsaved());
+  EEPROM.commitFails = false;
+  testMillis += 6000;
+  for (const char *cmd : {"PING\n", "GET\n", "SET invertX 1\n", "RESET\n", "SAVE\n"}) {
+    command(serial, cmd);
+    testMillis += 5999;
+    assert(statusLedState() == (configUnsaved() ? StatusLedState::Unsaved : StatusLedState::Connected));
+    ++testMillis;
+    assert(statusLedState() == (configUnsaved() ? StatusLedState::Unsaved : StatusLedState::Normal));
+  }
+  ledCanShow = false;
+  serial.input = "SAVE\n"; serial.position = 0;
+  assert(!pollConfigSerial(serial) && serial.position == 0);
+  ledCanShow = true;
+  command(serial, "PING extra\n"); assert(statusLedState() == StatusLedState::Error);
+  testMillis += 2000; assert(statusLedState() == StatusLedState::Normal);
+  // Restore fixtures for the pre-existing regression suite.
+  EEPROM = MockEEPROM(); config = DEFAULT_CONFIG; configSetPersistentBaseline(config);
+  takeConfigFlashWrite();
+  std::cout << "PASS: status priority/timers/rollover, changed-only driver, semantic baseline and protocol activity\n";
 }

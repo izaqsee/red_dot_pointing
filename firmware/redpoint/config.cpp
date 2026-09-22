@@ -1,5 +1,6 @@
 #include "config.h"
 #include "config_storage.h"
+#include "status_led.h"
 
 #include <Arduino.h>
 
@@ -17,6 +18,7 @@ size_t lineLength = 0;
 bool discardLine = false;
 
 void error(Stream &serial, const char *code) {
+  statusLedSignalError();
   serial.print("@CONFIG {\"ok\":false,\"error\":\"");
   serial.print(code);
   serial.println("\"}");
@@ -108,11 +110,13 @@ bool executeLine(Stream &serial) {
       error(serial, "UNKNOWN_KEY");
       return false;
     }
+    statusLedActivity();
+    statusLedSetUnsaved(configUnsaved());
     reply(serial, command);
     return true;
   }
   if (strcmp(command, "GET") != 0 && strcmp(command, "RESET") != 0 &&
-      strcmp(command, "SAVE") != 0) {
+      strcmp(command, "SAVE") != 0 && strcmp(command, "PING") != 0) {
     error(serial, "UNKNOWN_COMMAND");
     return false;
   }
@@ -120,14 +124,26 @@ bool executeLine(Stream &serial) {
     error(serial, "INVALID_ARGUMENTS");
     return false;
   }
+  statusLedActivity();
+  if (strcmp(command, "PING") == 0) {
+    serial.println("@CONFIG {\"ok\":true,\"command\":\"PING\"}");
+    return false;
+  }
   if (strcmp(command, "SAVE") == 0) {
+    statusLedSetSaving(true);
     const ConfigSaveResult result = saveDeviceConfig(config);
-    if (result == ConfigSaveResult::Saved) reply(serial, command);
+    if (result == ConfigSaveResult::Saved) {
+      configSetPersistentBaseline(config);
+      reply(serial, command);
+    }
     else error(serial, result == ConfigSaveResult::InvalidConfig ? "INVALID_CONFIG" : "SAVE_FAILED");
+    statusLedSetUnsaved(configUnsaved());
+    statusLedSetSaving(false);
     return false;
   }
   const bool reset = strcmp(command, "RESET") == 0;
   if (reset) config = DEFAULT_CONFIG;
+  statusLedSetUnsaved(configUnsaved());
   reply(serial, command);
   return reset;
 }
@@ -136,6 +152,9 @@ bool executeLine(Stream &serial) {
 DeviceConfig config = DEFAULT_CONFIG;
 
 bool pollConfigSerial(Stream &serial) {
+  // A prior color's latch must finish before a possible SAVE can submit purple.
+  // Yield to HID/PS2 instead of waiting inside NeoPixel::show().
+  if (!statusLedReadyForCommand()) return false;
   bool changed = false;
   for (size_t count = 0; count < RX_BYTES_PER_LOOP && serial.available(); ++count) {
     const int incoming = serial.read();
@@ -162,3 +181,21 @@ bool pollConfigSerial(Stream &serial) {
   }
   return changed;
 }
+
+namespace {
+DeviceConfig persistentBaseline = DEFAULT_CONFIG;
+bool equalAction(const ButtonAction &a, const ButtonAction &b) {
+  return a.type == b.type && a.code == b.code && a.modifiers == b.modifiers;
+}
+}
+bool equalDeviceConfig(const DeviceConfig &a, const DeviceConfig &b) {
+  return a.pointerSensitivity == b.pointerSensitivity && a.middleSensitivity == b.middleSensitivity &&
+    a.invertX == b.invertX && a.invertY == b.invertY &&
+    equalAction(a.leftAction, b.leftAction) && equalAction(a.middleAction, b.middleAction) &&
+    equalAction(a.rightAction, b.rightAction);
+}
+void configSetPersistentBaseline(const DeviceConfig &value) {
+  persistentBaseline = value;
+  statusLedSetUnsaved(configUnsaved());
+}
+bool configUnsaved() { return !equalDeviceConfig(config, persistentBaseline); }

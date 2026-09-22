@@ -18,3 +18,6 @@ public:
   }
   void println(const char *text) { output += text; output += "\r\n"; }
 };
+
+extern uint32_t testMillis;
+inline uint32_t millis() { return testMillis; }

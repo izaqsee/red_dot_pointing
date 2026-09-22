@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, createLineReader, createProtocol, createSerialTransport, mount } = require("../configurator/app.js");
+const { parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, mount } = require("../configurator/app.js");
 
 const defaults = () => ({ pointerSensitivity: 1, middleSensitivity: 0.4, invertX: false, invertY: false });
 const actionDefaults = () => ({ ...defaults(), leftAction: "mouse:left", middleAction: "mouse:middle", rightAction: "mouse:right" });
@@ -75,7 +75,7 @@ test("write errors and stalled writes are bounded", async () => {
 function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
   let controller;
   const port = {
-    config: savedConfig ? { ...savedConfig } : withActions ? actionDefaults() : defaults(), commands: [], writes: [], held: [], hold: false, rejectNext: false,
+    config: savedConfig ? { ...savedConfig } : withActions ? actionDefaults() : defaults(), commands: [], allCommands: [], pingSupported: false, writes: [], held: [], hold: false, rejectNext: false,
     opened: false, closed: false,
     readable: new ReadableStream({ start(c) { controller = c; } }),
     async open(options) { port.opened = true; port.options = options; },
@@ -94,6 +94,14 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
       const text = new TextDecoder().decode(bytes);
       port.writes.push(text);
       for (const line of text.split("\n").filter(Boolean)) {
+        port.allCommands.push(line);
+        // Existing UI regressions assert only user configuration commands.
+        if (line === "PING") {
+          if (port.holdPing) continue;
+          port.emit(port.pingSupported ? '@CONFIG {"ok":true,"command":"PING"}\n' :
+            '@CONFIG {"ok":false,"error":"UNKNOWN_COMMAND"}\n');
+          continue;
+        }
         port.commands.push(line);
         const [command, key, value] = line.split(" ");
         let reply;
@@ -147,13 +155,15 @@ function fakeDocument() {
   return doc;
 }
 
-function setupUI(withActions = false) {
+function setupUI(withActions = false, pingSupported = false, configurePort = () => {}) {
   const doc = fakeDocument();
   const ports = [];
   let persisted = null;
   const serial = {
     async requestPort() {
       const port = fakePort(persisted, config => { persisted = config; }, withActions);
+      port.pingSupported = pingSupported;
+      configurePort(port);
       ports.push(port);
       return port;
     },
@@ -549,4 +559,94 @@ test("action timeout resync uses returned action values and drops late SET", asy
   assert.equal(ui.el("middleAction-confirmed").textContent,"デバイス確認値: Disabled");
   assert.notEqual(ui.el("save-status").textContent,"Saved");
   await ui.disconnect();
+});
+
+
+test("PING response needs no config and cannot complete GET/SET", async () => {
+  const p = createProtocol(async () => {});
+  let done = false;
+  const get = p.request("GET").then(value => { done = true; return value; });
+  p.accept('@CONFIG {"ok":true,"command":"PING"}\n');
+  await sleep(1); assert.equal(done, false);
+  p.accept(response()); await get;
+  const ping = p.request("PING");
+  p.accept(response("GET")); assert.equal(p.isIdle(), false);
+  p.accept('@CONFIG {"ok":true,"command":"PING"}\n');
+  assert.equal(await ping, undefined); p.close();
+});
+
+test("heartbeat probes, skips busy/user drafts, resumes, and stops", async t => {
+  const sent = []; let allow = false;
+  const p = createProtocol(async line => { sent.push(line.trim()); if (line === "PING\n") p.accept('@CONFIG {"ok":true,"command":"PING"}\n'); });
+  const h = createHeartbeat(p, () => allow, error => { throw error; }, () => {}, 15);
+  t.after(() => { h.stop(); p.close(); });
+  h.start(); await sleep(35); assert.deepEqual(sent, []);
+  allow = true;
+  const set = p.request("SET invertX 1");
+  await sleep(35); assert.deepEqual(sent, ["SET invertX 1"]);
+  p.accept(response("SET")); await set;
+  await until(() => sent.includes("PING"));
+  allow = false; const count = sent.length;
+  await sleep(40); assert.equal(sent.length, count);
+  const save = p.request("SAVE"); p.accept(response("SAVE")); await save;
+  allow = true; await until(() => sent.filter(x => x === "PING").length >= 2);
+  h.stop(); const stopped = sent.length; await sleep(40); assert.equal(sent.length, stopped);
+});
+
+test("UNKNOWN_COMMAND disables heartbeat once and normal requests continue", async t => {
+  const sent = []; let errors = 0;
+  const p = createProtocol(async line => {
+    sent.push(line.trim());
+    p.accept(line === "PING\n" ? '@CONFIG {"ok":false,"error":"UNKNOWN_COMMAND"}\n' : response(line.trim().split(" ")[0]));
+  });
+  const h = createHeartbeat(p, () => true, () => ++errors, () => {}, 10);
+  t.after(() => { h.stop(); p.close(); });
+  h.start(); await sleep(50);
+  assert.deepEqual(sent, ["PING"]); assert.equal(errors, 0);
+  await p.request("SET invertX 1"); await p.request("SAVE");
+  assert.deepEqual(sent, ["PING", "SET invertX 1", "SAVE"]);
+});
+
+test("UI heartbeat stops on disconnect/unplug and probes each reconnect", async t => {
+  const ui = setupUI(true, true);
+  t.after(() => ui.disconnect());
+  const first = await ui.connect();
+  assert.deepEqual(first.allCommands, ["GET", "PING"]);
+  await until(() => first.allCommands.filter(x => x === "PING").length === 2, 2600);
+  await ui.disconnect(); const count = first.allCommands.length;
+  const second = await ui.connect();
+  assert.deepEqual(second.allCommands, ["GET", "PING"]);
+  second.unplug(); await until(() => ui.el("connection-status").textContent === "Disconnected");
+  const secondCount = second.allCommands.length;
+  await sleep(2100);
+  assert.equal(first.allCommands.length, count); assert.equal(second.allCommands.length, secondCount);
+  const third = await ui.connect(); assert.deepEqual(third.allCommands, ["GET", "PING"]);
+});
+
+
+test("user SET/SAVE drain immediately after an in-flight PING, without overlapping requests", async t => {
+  const ui = setupUI(true, true, p => { p.holdPing = true; });
+  t.after(() => ui.disconnect());
+  const port = await ui.connect();
+  ui.el("invertX").checked = true; ui.el("invertX").fire("input");
+  ui.el("save").fire("click");
+  await sleep(160);
+  assert.deepEqual(port.allCommands, ["GET", "PING"]);
+  port.emit('@CONFIG {"ok":true,"command":"PING"}\n');
+  await until(() => ui.el("save-status").textContent === "Saved");
+  assert.deepEqual(port.allCommands, ["GET", "PING", "SET invertX 1", "SAVE"]);
+});
+
+test("heartbeat timeout GET resync restores usable UI and ignores late PING", async t => {
+  const ui = setupUI(true, true, p => { p.holdPing = true; });
+  t.after(() => ui.disconnect());
+  const port = await ui.connect();
+  await until(() => port.commands.filter(x => x === "GET").length === 2, 2600);
+  await until(() => ui.el("connection-status").textContent === "Connected");
+  assert.equal(ui.el("pointer-controls").disabled, false);
+  port.emit('@CONFIG {"ok":true,"command":"PING"}\n');
+  ui.el("invertY").checked = true; ui.el("invertY").fire("input");
+  ui.el("save").fire("click");
+  await until(() => ui.el("save-status").textContent === "Saved");
+  assert.equal(port.config.invertY, true);
 });

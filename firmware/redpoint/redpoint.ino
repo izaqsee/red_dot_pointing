@@ -2,6 +2,7 @@
 #include <Keyboard.h>
 #include "config.h"
 #include "config_storage.h"
+#include "status_led.h"
 
 // ============================================================
 // Pin assignment
@@ -409,9 +410,11 @@ void handleTrackPointPacket(
 // ============================================================
 
 void setup() {
+  statusLedBegin();
 
   // Load once before PS/2 IRQ/HID initialization; invalid storage uses defaults.
   loadDeviceConfig(config);
+  configSetPersistentBaseline(config);
 
   // ----------------------------------------------------------
   // USB Serial
@@ -470,6 +473,7 @@ void setup() {
 #if DEBUG_INPUTS
   Serial.println("@DEBUG WZ RP2040 mouse ready");
 #endif
+  statusLedEndBoot();
 }
 
 // ============================================================
@@ -560,4 +564,5 @@ void loop() {
     packetIndex = 0;
     synced = false;
   }
+  statusLedUpdate();
 }

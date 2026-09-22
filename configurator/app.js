@@ -29,7 +29,7 @@
         return { kind: "config", response };
       }
       if (response && response.ok === true &&
-          ["GET", "SET", "RESET", "SAVE"].includes(response.command) && validConfig(response.config)) {
+          (response.command === "PING" || (["GET", "SET", "RESET", "SAVE"].includes(response.command) && validConfig(response.config)))) {
         return { kind: "config", response };
       }
     } catch { /* Malformed lines are isolated; keep receiving. */ }
@@ -82,11 +82,12 @@
         if (!pending.resync) finish(protocolError(response.error));
       } else if (response.command === pending.command) {
         needsSync = false;
-        finish(null, Object.fromEntries(ALL_KEYS.filter(key => Object.hasOwn(response.config, key)).map(key => [key, response.config[key]])));
+        finish(null, response.command === "PING" ? undefined : Object.fromEntries(ALL_KEYS.filter(key => Object.hasOwn(response.config, key)).map(key => [key, response.config[key]])));
       }
     });
     return {
       accept,
+      isIdle: () => !closed && !pending && !needsSync,
       request(command, { resync = false } = {}) {
         if (closed) return Promise.reject(protocolError("DISCONNECTED"));
         if (pending) return Promise.reject(protocolError("BUSY"));
@@ -114,6 +115,42 @@
         closed = true;
         finish(protocolError("DISCONNECTED"));
       }
+    };
+  }
+
+  // No queue: a heartbeat tick is expendable; user work is not.
+  function createHeartbeat(protocol, canSend, onError, onIdle, intervalMs = 2000) {
+    let stopped = false;
+    let supported = null;
+    let inFlight = false;
+    let timer = null;
+    async function tick() {
+      if (stopped || supported === false || inFlight || !canSend() || !protocol.isIdle()) return;
+      inFlight = true;
+      try {
+        await protocol.request("PING");
+        if (!stopped) supported = true;
+      } catch (error) {
+        if (!stopped) {
+          if (error.code === "UNKNOWN_COMMAND") {
+            supported = false;
+            clearInterval(timer);
+          } else await onError(error);
+        }
+      } finally {
+        inFlight = false;
+        if (!stopped) onIdle();
+      }
+    }
+    return {
+      start() {
+        if (stopped || timer !== null) return;
+        // The first idle tick is the single capability probe after GET sync.
+        timer = setInterval(() => { void tick(); }, intervalMs);
+        void tick();
+      },
+      stop() { stopped = true; clearInterval(timer); timer = null; },
+      isBusy: () => inFlight
     };
   }
 
@@ -277,6 +314,7 @@
       changedSinceSync = false;
       busy = false;
       connectionState = "disconnecting";
+      previous?.heartbeat?.stop();
       previous?.protocol.close();
       render();
       try {
@@ -303,13 +341,14 @@
         if (session !== active) return;
         confirmed = config;
         connectionState = "connected";
+        active.heartbeat?.start();
         message("デバイスの現在値を再取得しました。未送信の変更は破棄しました。保存結果は未確認です。必要ならSaveを再実行してください。");
       } catch (error) {
         if (session === active) await disconnect(`再同期できませんでした: ${error.message}。再接続してください。`, "error");
       }
     }
     async function pump() {
-      if (busy || !session || connectionState !== "connected") return;
+      if (busy || !session || session.heartbeat?.isBusy() || connectionState !== "connected") return;
       const active = session;
       const entry = [...drafts.entries()].find(([, draft]) => draft.ready);
       if (!resetRequested && !entry && !saveRequested) return;
@@ -371,6 +410,17 @@
           if (session === active) void disconnect(`接続が失われました: ${error.message}`, "error");
         });
         active.protocol = createProtocol(text => active.transport.send(text));
+        active.heartbeat = createHeartbeat(active.protocol,
+          () => session === active && connectionState === "connected" && !busy &&
+            !drafts.size && !resetRequested && !saveRequested && !recordingKey,
+          async error => {
+            if (session !== active) return;
+            if (error.code === "TIMEOUT") {
+              await recover(active);
+              if (session === active) render();
+            }
+            else await disconnect(`Heartbeat通信エラー: ${error.message}`, "error");
+          }, () => { if (session === active) void pump(); });
         session = active;
         connectionState = "syncing";
         const info = port.getInfo();
@@ -384,6 +434,7 @@
         if (session !== active) return;
         confirmed = config;
         connectionState = "connected";
+        active.heartbeat?.start();
         message("設定を取得しました。操作した項目はデバイスの応答後に確定します。");
       } catch (error) {
         if (active && session !== active) return;
@@ -456,6 +507,6 @@
 
   // Node's built-in test runner can exercise the actual code without a build tool.
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, mount };
+    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, mount };
   } else mount(document, navigator.serial, window.isSecureContext);
 })();

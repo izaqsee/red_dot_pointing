@@ -23,3 +23,8 @@ extern DeviceConfig config;
 
 // Main loop only. Returns true when SET/RESET succeeds; clear motion remainders.
 bool pollConfigSerial(Stream &serial);
+
+// Boot baseline includes defaults and logical v1 migration.
+void configSetPersistentBaseline(const DeviceConfig &value);
+bool configUnsaved();
+bool equalDeviceConfig(const DeviceConfig &a, const DeviceConfig &b);

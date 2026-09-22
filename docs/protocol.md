@@ -243,3 +243,42 @@ Button・migrationの実機acceptance手順は[README](../README.md#ボタン割
 次phase候補は保存中の電源断に対する二重化、実機での長時間検証。
 将来WebHIDへ移行する場合は設定用HID reportとtransportを別途設計する。
 Mouse reportは既存のまま、KeyboardライブラリのHID descriptorを追加している。
+
+## PING / Device status heartbeat
+
+要求:
+
+```text
+PING
+```
+
+応答（configは不要）:
+
+```text
+@CONFIG {"ok":true,"command":"PING"}
+```
+
+引数は禁止で、余分な引数には既存の`INVALID_ARGUMENTS`を返します。
+PINGも通常の1要求→1応答です。未応答の要求と並行送信しません。
+成功したSETと、構文が有効なGET／RESET／SAVE／PINGはfirmwareのactivityを更新します。
+SAVEの保存失敗も有効な要求としてactivityを更新し、同時にErrorを表示します。
+不明コマンド、無効なSET、parser errorはactivityを更新せず、Error表示の対象です。
+firmwareは最後のactivityから6000 ms未満をconnectedとして扱い、unsigned差分でmillis rolloverに対応します。
+Serial portがopenなだけではactiveと判定しません。
+
+ブラウザは接続ごとにGET同期を成功させてから、最初のidle機会にPINGを1回probeします。
+成功すると2000 ms間隔でPINGします。`UNKNOWN_COMMAND`ならそのsessionのtimerを停止し、
+ユーザーへのfatal error表示なしでPointer／Button設定を継続します。旧形式のconfig応答も引き続き受理します。
+再接続ではcapabilityを破棄して再probeします。
+probeやheartbeatの通信timeoutは既存のGET再同期経路、write失敗は切断経路を使います。
+
+ユーザーのdraft（debounce待ちを含む）、SET／RESET／SAVE要求、GET同期、shortcut記録中はPINGをskipします。
+PINGをqueueに蓄積しません。すでに送信済みのPINGは応答を受けるまで直列化を維持し、
+応答直後に待機中のユーザー操作を優先します。Disconnect、入力stream終了、USB抜去でtimerを停止します。
+command名が一致しない成功応答は待機要求を完了させません。
+
+LEDはfirmware側の状態から決定し、protocolのconfig形式・Flash format v2は変更しません。
+全`@CONFIG` error応答でREDを2秒保持し、新しいエラーで延長します。
+SAVE直前にPURPLEを送信し、完了後もLEDだけ開始時刻から最低150 ms保持します。
+ErrorはPURPLEより優先されます。Flash／protocol／HIDを表示時間のために待たせません。
+NeoPixelのハードウェアラッチ期間中はSerial pollを次loopへ譲り、blocking waitを回避します。

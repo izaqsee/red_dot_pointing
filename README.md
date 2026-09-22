@@ -228,3 +228,37 @@ Pagesのproject URLでのRecorder、SAVE直後のPS/2再同期とdebugを確認�
 - 必要になった段階でのWebHID用transport / firmware report設計
 
 firmware update、acceleration curve editor、macro、multi-step chord、long press、double click、layerは未実装です。
+
+## Onboard Device Status Indicator
+
+VCC-GND YD RP2040のWS2812（GPIO23、1 pixel、GRB / 800 kHz）を使用します。
+**RGB solder jumperのbridgeが必要**です。通常の単色LEDとは別です。
+眩しさを抑えるため`status_led.h`の`STATUS_LED_BRIGHTNESS`は8（255段階）です。
+既存環境の **Adafruit NeoPixel 1.15.5** を使用します。他環境でのビルドにもこのライブラリが必要です。
+Philhower RP2040 core 6.1.0、Pico SDK USB stackは維持しています。
+
+| 色 | 意味 |
+| --- | --- |
+| WHITE | Boot（既存の起動待ち時間中） |
+| BLUE | Normal |
+| GREEN | Configurator active（最近6秒以内の有効な設定通信） |
+| YELLOW | Unsaved changes |
+| PURPLE | Saving（LED表示のみ最低150 ms） |
+| RED | Runtime error（最後のエラーから2秒） |
+
+Bootは起動時だけのoverrideです。通常時の優先順位は
+**Error > Saving > Unsaved > Configurator active > Normal**です。
+Unsavedはfirmwareが全7項目を起動時／最後のSAVE成功時のlogical configと比較します。
+元の値へ戻せばSaved相当に戻り、RESETも比較結果に従います。SAVE失敗ではbaselineを変更しません。
+default fallbackやv1 migrationだけではYELLOW／REDにしません。
+
+ConfiguratorはGET同期後にPING capabilityをprobeし、対応時のみidle中に2秒間隔で送信します。
+Disconnect／unplug時はtimerを停止します。LEDの接続解除反映は最後の通信から最大6秒です。
+Unsavedなら切断・再接続してもYELLOWを維持します。旧firmwareのUNKNOWN_COMMANDは表示せず、
+そのsessionのheartbeatだけを無効化して通常の設定機能を継続します。
+詳細は[protocol](docs/protocol.md)と[実機確認手順](docs/status-led-validation.md)を参照してください。
+
+LED送信はsetup／main loopの色変化時だけです。PIO使用のNeoPixelドライバにも短いIRQ停止区間があるため、
+PS/2への無影響はhostテストだけでは保証できません。1 pixelの線上送信は約30 µsで、
+CPUのIRQ停止時間とは同一ではありません。ラッチ待ち中はSerial処理を次loopへ譲り、HID／PS/2処理を続けます。
+Flash commitの既存のIRQ停止と受信再同期は従来どおりです。
