@@ -22,6 +22,17 @@ void error(Stream &serial, const char *code) {
   serial.println("\"}");
 }
 
+void replyAction(Stream &serial, const char *key, const ButtonAction &action) {
+  char text[ACTION_TEXT_CAPACITY];
+  // All config entry points validate actions before assignment.
+  if (!formatButtonAction(action, text, sizeof(text))) return;
+  serial.print(",\"");
+  serial.print(key);
+  serial.print("\":\"");
+  serial.print(text);
+  serial.print("\"");
+}
+
 void reply(Stream &serial, const char *command) {
   serial.print("@CONFIG {\"ok\":true,\"command\":\"");
   serial.print(command);
@@ -33,6 +44,9 @@ void reply(Stream &serial, const char *command) {
   serial.print(config.invertX ? "true" : "false");
   serial.print(",\"invertY\":");
   serial.print(config.invertY ? "true" : "false");
+  replyAction(serial, "leftAction", config.leftAction);
+  replyAction(serial, "middleAction", config.middleAction);
+  replyAction(serial, "rightAction", config.rightAction);
   serial.println("}}");
 }
 
@@ -81,6 +95,15 @@ bool executeLine(Stream &serial) {
       }
       if (strcmp(key, "invertX") == 0) config.invertX = value[0] == '1';
       else config.invertY = value[0] == '1';
+    } else if (strcmp(key, "leftAction") == 0 || strcmp(key, "middleAction") == 0 || strcmp(key, "rightAction") == 0) {
+      ButtonAction parsed;
+      if (!parseButtonAction(value, parsed)) {
+        error(serial, "INVALID_VALUE");
+        return false;
+      }
+      if (strcmp(key, "leftAction") == 0) config.leftAction = parsed;
+      else if (strcmp(key, "middleAction") == 0) config.middleAction = parsed;
+      else config.rightAction = parsed;
     } else {
       error(serial, "UNKNOWN_KEY");
       return false;

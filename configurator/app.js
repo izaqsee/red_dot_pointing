@@ -2,6 +2,10 @@
 
 (() => {
   const KEYS = ["pointerSensitivity", "middleSensitivity", "invertX", "invertY"];
+  const ACTION_KEYS = ["leftAction", "middleAction", "rightAction"];
+  const ALL_KEYS = [...KEYS, ...ACTION_KEYS];
+  const { validAction, actionLabel, createShortcutRecorder } =
+    typeof module !== "undefined" && module.exports ? require("./shortcuts.js") : window.RedPointShortcuts;
   const RESPONSE_TIMEOUT_MS = 2000;
   const EDIT_DEBOUNCE_MS = 120;
   const MAX_RESPONSE_LINE = 2048;
@@ -12,7 +16,8 @@
       ["pointerSensitivity", "middleSensitivity"].every(key =>
         typeof config[key] === "number" && Number.isFinite(config[key]) &&
         config[key] >= 0 && config[key] <= 10) &&
-      typeof config.invertX === "boolean" && typeof config.invertY === "boolean";
+      typeof config.invertX === "boolean" && typeof config.invertY === "boolean" &&
+      (ACTION_KEYS.every(key => !Object.hasOwn(config, key)) || ACTION_KEYS.every(key => validAction(config[key])));
   }
 
   function parseLine(line) {
@@ -77,7 +82,7 @@
         if (!pending.resync) finish(protocolError(response.error));
       } else if (response.command === pending.command) {
         needsSync = false;
-        finish(null, Object.fromEntries(KEYS.map(key => [key, response.config[key]])));
+        finish(null, Object.fromEntries(ALL_KEYS.filter(key => Object.hasOwn(response.config, key)).map(key => [key, response.config[key]])));
       }
     });
     return {
@@ -178,6 +183,35 @@
     let saveRequested = false;
     let saved = null; // Only a SAVE success in this connection establishes this.
     let changedSinceSync = false;
+    let recordingKey = null;
+    const recorder = createShortcutRecorder(document, {
+      preview(text, error) {
+        byId("recorder-preview").textContent = text;
+        byId("recorder-preview").dataset.error = String(error);
+      },
+      commit(value) {
+        const key = recordingKey;
+        stopRecording();
+        if (key) proposeAction(key, value);
+      },
+      cancel() {
+        stopRecording();
+        message("記録をキャンセルしました。割当は変更していません。");
+        render();
+      }
+    });
+    const hasActions = () => confirmed && ACTION_KEYS.every(key => validAction(confirmed[key]));
+    function stopRecording() {
+      recorder.stop();
+      recordingKey = null;
+      byId("recorder").hidden = true;
+    }
+    function proposeAction(key, value) {
+      if (connectionState !== "connected" || !hasActions() || resetRequested || saveRequested || !validAction(value)) return;
+      drafts.set(key, { value, ready: true });
+      render();
+      void pump();
+    }
 
     function message(text, kind = "info") {
       byId("message").textContent = text;
@@ -191,14 +225,17 @@
       const ready = connectionState === "connected" && confirmed !== null;
       byId("connect").disabled = !supported || connectionState !== "disconnected";
       byId("disconnect").disabled = !session || connectionState === "disconnecting";
-      byId("pointer-controls").disabled = !ready || resetRequested || saveRequested;
-      byId("reset").disabled = !ready || resetRequested || saveRequested;
-      byId("save").disabled = !ready || resetRequested || saveRequested;
+      byId("pointer-controls").disabled = !ready || resetRequested || saveRequested || Boolean(recordingKey);
+      byId("button-controls").disabled = !ready || !hasActions() || resetRequested || saveRequested || Boolean(recordingKey);
+      byId("buttons-support").textContent = !ready ? "接続後に割当を取得します。" : hasActions() ?
+        "操作はRAMへ反映します。再起動後も使うにはSaveしてください。" : "Firmware update required for button mapping";
+      byId("reset").disabled = !ready || resetRequested || saveRequested || Boolean(recordingKey);
+      byId("save").disabled = !ready || resetRequested || saveRequested || Boolean(recordingKey);
       let saveState = "保存状態未確認";
       if (!ready) saveState = "—";
       else if (saveRequested) saveState = "Saving…";
       else if (drafts.size || resetRequested) saveState = "Unsaved changes";
-      else if (saved) saveState = KEYS.every(key => saved[key] === confirmed[key]) ? "Saved" : "Unsaved changes";
+      else if (saved) saveState = ALL_KEYS.every(key => saved[key] === confirmed[key]) ? "Saved" : "Unsaved changes";
       else if (changedSinceSync) saveState = "Unsaved changes";
       byId("save-status").textContent = saveState;
       byId("save-status").dataset.saved = String(saveState === "Saved");
@@ -215,8 +252,16 @@
         }
         byId(`${key}-confirmed`).textContent = `デバイス確認値: ${confirmed ? format(confirmed[key]) : "—"}${draft ? " · 反映待ち" : ""}`;
       }
+      for (const key of ACTION_KEYS) {
+        const draft = drafts.get(key);
+        const value = draft ? draft.value : confirmed?.[key];
+        byId(key).value = typeof value === "string" && value.startsWith("key:") ? "shortcut" : value || "disabled";
+        byId(`${key}-confirmed`).textContent = `デバイス確認値: ${actionLabel(confirmed?.[key])}`;
+        byId(`${key}-pending`).textContent = draft ? `反映待ち: ${actionLabel(draft.value)}` : "";
+      }
     }
     function discardDrafts() {
+      stopRecording();
       clearTimeout(editTimer);
       editTimer = null;
       drafts.clear();
@@ -272,7 +317,7 @@
       const resetting = resetRequested;
       const saving = saveRequested && !resetting && !entry;
       const [key, draft] = entry || [];
-      const command = resetting ? "RESET" : saving ? "SAVE" : `SET ${key} ${typeof draft.value === "boolean" ? Number(draft.value) : draft.value.toFixed(2)}`;
+      const command = resetting ? "RESET" : saving ? "SAVE" : `SET ${key} ${typeof draft.value === "string" ? draft.value : typeof draft.value === "boolean" ? Number(draft.value) : draft.value.toFixed(2)}`;
       message(resetting ? "default値へ戻しています…" : saving ? "Flashへ保存しています…" : "デバイスへ反映しています…");
       try {
         const config = await active.protocol.request(command);
@@ -356,7 +401,7 @@
     }
     for (const key of KEYS) {
       controls[key].addEventListener("input", () => {
-        if (connectionState !== "connected" || resetRequested || saveRequested) return;
+        if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey) return;
         const value = controls[key].type === "checkbox" ? controls[key].checked : Number(controls[key].value);
         if (typeof value === "number" && (!Number.isFinite(value) || value < 0 || value > 10)) return;
         drafts.set(key, { value, ready: false });
@@ -368,17 +413,31 @@
         render();
       });
     }
+    for (const key of ACTION_KEYS) {
+      byId(key).addEventListener("change", () => {
+        if (!recordingKey) proposeAction(key, byId(key).value);
+      });
+      byId(`${key}-record`).addEventListener("click", () => {
+        if (connectionState !== "connected" || !hasActions() || resetRequested || saveRequested || recordingKey) return;
+        recordingKey = key;
+        byId("recorder").hidden = false;
+        byId("recorder-title").textContent = `Recording shortcut… (${key.replace("Action", "")})`;
+        recorder.start();
+        render();
+      });
+    }
+    byId("recorder-cancel").addEventListener("click", () => recorder.cancel());
     byId("connect").addEventListener("click", () => { void connect(); });
     byId("disconnect").addEventListener("click", () => { void disconnect(); });
     byId("reset").addEventListener("click", () => {
-      if (connectionState !== "connected" || resetRequested || saveRequested) return;
+      if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey) return;
       discardDrafts();
       resetRequested = true; // Wait for an in-flight SET before RESET.
       render();
       void pump();
     });
     byId("save").addEventListener("click", () => {
-      if (connectionState !== "connected" || resetRequested || saveRequested) return;
+      if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey) return;
       clearTimeout(editTimer);
       // Flush the latest local proposals before SAVE; never save stale RAM values.
       for (const draft of drafts.values()) draft.ready = true;

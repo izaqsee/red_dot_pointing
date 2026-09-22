@@ -3,9 +3,9 @@
 ## 接続とフレーミング
 
 USB CDC Serialを使用する。接続設定は115200 baud、8N1、flow controlなし。
-HID MouseとWebSerial設定通信は同時に動作する。明示的なSAVEで設定をFlashへ保存する。
-Arduino Philhower RP2040 coreとMouseライブラリを使い、`firmware/redpoint/`
-をスケッチとして開く。同じフォルダの`config*.cpp`もビルド対象になる。
+HID Mouse・KeyboardとWebSerial設定通信は同時に動作する。明示的なSAVEで設定をFlashへ保存する。
+Arduino Philhower RP2040 core 6.1.0のMouse / KeyboardライブラリとPico SDK USB stackを使う。
+`firmware/redpoint/`をスケッチとして開き、同じフォルダの全`.cpp`をビルドする。
 ボードとUSB設定は実機で使用している設定を維持する。
 
 要求はASCIIの1行1コマンド。LF、CRLF、CRを受け付ける。
@@ -33,10 +33,13 @@ chunkの境界は行の境界とは限らず、応答の前後にdebug行が入�
 
 | キー | default | SETで受け付ける値 | 意味 |
 | --- | --- | --- | --- |
-| pointerSensitivity | 1.00 | 0～10（両端を含む） | Middleを押していないときの倍率 |
-| middleSensitivity | 0.40 | 0～10（両端を含む） | debounce後のMiddle押下中の倍率 |
+| pointerSensitivity | 1.00 | 0～10（両端を含む） | logical Mouse Middleがheldでないときの倍率 |
+| middleSensitivity | 0.40 | 0～10（両端を含む） | logical Mouse Middleがheldのときの倍率 |
 | invertX | false | `0` / `1` | USB X方向の反転 |
 | invertY | false | `0` / `1` | USB Y方向の反転 |
+| leftAction | `mouse:left` | 下記Action文字列 | Left物理ボタンの割当 |
+| middleAction | `mouse:middle` | 下記Action文字列 | Middle物理ボタンの割当 |
+| rightAction | `mouse:right` | 下記Action文字列 | Right物理ボタンの割当 |
 
 感度は数字と小数点1個までの非負10進表記。`1`、`0.35`、`.5`、`1.`は有効。
 符号、指数表記、NaN、Infinity、16進表記、単位付き文字列は無効。
@@ -51,7 +54,42 @@ invertX/Yと選択された感度を適用する。小数部はモードごと�
 これはbaselineのMiddle残量の消去タイミングを維持するためである。
 出力は再度±127に飽和させる。飽和した整数分は捨て、小数部のみ持ち越す。
 SET/RESET成功時は全残量を消し、次のpacketから設定を適用する。
-同じ値のSETでも残量は消す。ボタンのHID送信、debounce、PS/2受信設定は変更しない。
+同じ値のSETでも残量は消す。debounceとPS/2受信設定は変更しない。
+
+### Button Action
+
+Actionは`mouse:left`、`mouse:middle`、`mouse:right`、`disabled`、または
+`key:MM:KK`の1 token。MMはmodifier bitfield、KKはKeyboard page (0x07)のHID Usage ID。
+各hexは必ず2桁で、入力は大小どちらも許可し、応答はuppercaseに正規化する。
+modifierはCtrl=01、Shift=02、Alt=04、GUI/Meta=08で、上位4 bitは0を要求する。
+例: `key:03:17`はCtrl+Shift+T、`key:00:04`はA。
+
+対応usageは04～73のうち32 (Non-US #)と66 (Power)を除く。
+英数字、標準punctuation、Enter/Escape/Backspace/Tab/Space、F1～F24、
+navigation/arrows、CapsLock/ScrollLock/PrintScreen/Pause、NumLockとnumpad、
+IntlBackslash、ContextMenuに対応する。完全なcode/usage/表示名対応表は
+`configurator/shortcuts.js`。JIS固有のIntlYen/IntlRo、IME、AltGraph、media/Fnは対象外。
+modifier-only、usage 00やE0～E7、reserved modifier、未知type/mouse名、
+不正hex、桁数・末尾dataの不一致は`INVALID_VALUE`。空白による余分なtokenは`INVALID_ARGUMENTS`。
+
+内部・Flash表現はtype/code/modifiers各1 byte。
+typeはDisabled=0、MouseButton=1、KeyboardShortcut=2。
+Mouse codeはLeft=1、Middle=2、Right=3（Mouseライブラリのbitmaskとは別）でmodifiers=0。
+Disabledはcode/modifiersとも0を要求する。Keyboardは上記usageとmodifierを使用する。
+
+debounce済みDOWNでActionをlatchし、UPでそのActionをreleaseする。
+押下中のSET/RESETは次回DOWNへ反映し、現在heldのActionは変更しない。
+Mouse/key/modifierごとの所有数を管理し、最後の所有者のUPでのみreleaseする。
+通常のreleaseで`Keyboard.releaseAll()`は使用しない。
+Middle倍率はこのlatchされたlogical Mouse Middleの所有状態から選ぶため、
+RightをMouse Middleへ割り当てた場合も適用される。MiddleをKeyboardへ変えると適用されない。
+
+core 6.1.0のKeyboard APIはraw usageを直接受けないため、`keyboard_mapping.cpp`で
+usage+136へ変換し、modifierは`KEY_LEFT_CTRL/SHIFT/ALT/GUI`で送る。
+右modifierも左modifierへ統一する。文字列/ASCII変換はしない。
+複数ボタンの同時押下では通常のKeyboard同様にmodifierが合成され、
+最大3個のnon-modifier keyをheldにする。押し続けた際のrepeatはOSに従う。
+USB初期化後にも押されている起動時のボタンは、その時点でActionをpressする。
 
 ## コマンドと応答
 
@@ -61,7 +99,7 @@ SET/RESET成功時は全残量を消し、次のpacketから設定を適用す�
 
 ```text
 GET
-@CONFIG {"ok":true,"command":"GET","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.400000,"invertX":false,"invertY":false}}
+@CONFIG {"ok":true,"command":"GET","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.400000,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right"}}
 ```
 
 ### SET <key> <value>
@@ -71,17 +109,28 @@ GET
 
 ```text
 SET middleSensitivity 0.25
-@CONFIG {"ok":true,"command":"SET","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false}}
+@CONFIG {"ok":true,"command":"SET","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right"}}
 SET pointerSensitivity 1.10
 SET invertX 1
 SET invertY 0
 ```
 
-最後の3例もそれぞれ送信後に応答を待つ。
+最後の3例もそれぞれ送信後に応答を待つ。Actionも同じSETを使う。
+
+```text
+SET rightAction key:03:17
+SET middleAction disabled
+SET leftAction mouse:right
+```
+
+成功応答のconfigには常に7項目を含む。旧Configuratorは追加fieldを無視できる。
+新ConfiguratorはAction fieldが3つともない旧4項目応答も許可し、Pointerを利用可能に保つ。
+この場合Buttonsは「Firmware update required for button mapping」で無効化し、Action SETを送らない。
+一部だけAction fieldがある応答や不正Actionは設定として受理しない。
 
 ### RESET
 
-RAM設定をdefaultに戻す。引数なし。再起動やFlash操作はしない。
+Pointerと3つのButton Actionを含むRAM設定をdefaultに戻す。引数なし。再起動やFlash操作はしない。
 成功応答はGETと同じ構造で`command`が`RESET`になる。
 Flashの保存内容は変更しない。RESET後にSAVEしなければ、再起動後は以前保存した値へ戻る。
 defaultを永続化するにはRESET成功後にSAVEする。
@@ -95,7 +144,7 @@ Flash上のレコードと同一の場合はwrite/eraseを省略して成功を�
 
 ```text
 SAVE
-@CONFIG {"ok":true,"command":"SAVE","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false}}
+@CONFIG {"ok":true,"command":"SAVE","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right"}}
 ```
 
 保存対象の検証失敗と、保存／照合の失敗を区別する。
@@ -118,29 +167,36 @@ Configuratorは未送信SETを反映してからSAVEし、その間は設定操�
 ## Flash保存形式と起動
 
 Philhower RP2040 core 6.1.0標準EEPROM emulationを使用する。
-coreが予約するFlash末尾の4 KiB sector内、offset 0に次の24-byteレコードを保存する。
+coreが予約するFlash末尾の4 KiB sector内、offset 0に次の36-byte v2レコードを保存する。
 filesystemは不要。多byte値はlittle endian、floatはIEEE-754 binary32。
 C++ structのpaddingやboolのメモリ表現には依存しない。
 
 | Offset | Bytes | 内容 |
 | --- | --- | --- |
 | 0 | 4 | magic: ASCII `RPNT`（uint32 0x544E5052） |
-| 4 | 2 | format version: 1 |
-| 6 | 2 | record length: 24 |
+| 4 | 2 | format version: 2 |
+| 6 | 2 | record length: 36 |
 | 8 | 4 | pointerSensitivity |
 | 12 | 4 | middleSensitivity |
 | 16 | 1 | invertX: 0 / 1 |
 | 17 | 1 | invertY: 0 / 1 |
 | 18 | 2 | reserved: 0 |
-| 20 | 4 | bytes 0～19のCRC-32/ISO-HDLC |
+| 20 / 24 / 28 | 各1 | Left / Middle / Right action type |
+| 21 / 25 / 29 | 各1 | action code |
+| 22 / 26 / 30 | 各1 | modifiers |
+| 23 / 27 / 31 | 各1 | reserved: 0 |
+| 32 | 4 | bytes 0～31のCRC-32/ISO-HDLC |
 
 CRCはreflected polynomial 0xEDB88320、初期値0xFFFFFFFF、最終XOR 0xFFFFFFFF。
 拡張時はformat versionとrecord lengthを更新し、必要に応じて移行処理を追加する。
-現versionでは他versionを移行せずdefaultへfallbackする。
+v1 (24 bytes)も読み込む。v1はoffset 0～19が同じ構成で、version=1、length=24、
+offset 20～23にbytes 0～19のCRCを持つ。CRC・値・reservedを検証した有効なv1は
+既存4項目を保持し、defaultの3 Actionを追加してRAM上だけで移行する。
+起動時には書き込まず、次の明示SAVEでv2を保存する。未知versionはdefaultへfallbackする。
 
 setupのPS/2割り込み・HID初期化前に1回loadする。
-magic、version、長さ、CRC、reserved、bool表現、感度の有限性・0～10の範囲をすべて検証する。
-未保存（消去済み領域を含む）またはどれか不正なら4項目すべてdefaultに戻す。
+magic、version、長さ、CRC、reserved、bool表現、感度の有限性・0～10の範囲、Actionのtype/code/modifiersをすべて検証する。
+未保存（消去済み領域を含む）またはどれか不正なら7項目すべてdefaultに戻す。
 bootやfallback、SET、RESETではFlashを書かず、壊れたデータの自動修復もしない。
 
 EEPROM.beginはcore内部で256-byteのRAMバッファを起動時に確保する。
@@ -183,6 +239,7 @@ ISR、通常のdecode、pointer変換、debounceは変更しない。
 - SAVE直後のpacket再同期、移動・ボタン・debugの復帰を確認する。
 - DEBUG_INPUTSの0/1、debug中の応答JSON、Serial未接続・切断・再接続中のHID、連続移動中のdrop値を確認する。
 
-次phase候補は保存中の電源断に対する二重化、format migration、実機での長時間検証。
+Button・migrationの実機acceptance手順は[README](../README.md#ボタン割当の実機確認)を参照。
+次phase候補は保存中の電源断に対する二重化、実機での長時間検証。
 将来WebHIDへ移行する場合は設定用HID reportとtransportを別途設計する。
-USB descriptorやMouse reportは変更していない。
+Mouse reportは既存のまま、KeyboardライブラリのHID descriptorを追加している。

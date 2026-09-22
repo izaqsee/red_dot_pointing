@@ -11,20 +11,25 @@
 
 MockEEPROM EEPROM;
 
+void runActionTests();
+bool equalAction(const ButtonAction &a, const ButtonAction &b) {
+  return a.type == b.type && a.code == b.code && a.modifiers == b.modifiers;
+}
 bool equal(const DeviceConfig &a, const DeviceConfig &b) {
   return a.pointerSensitivity == b.pointerSensitivity && a.middleSensitivity == b.middleSensitivity &&
-    a.invertX == b.invertX && a.invertY == b.invertY;
+    a.invertX == b.invertX && a.invertY == b.invertY &&
+    equalAction(a.leftAction,b.leftAction) && equalAction(a.middleAction,b.middleAction) && equalAction(a.rightAction,b.rightAction);
 }
 
 // Independent CRC fixture helper to test semantic rejection despite a valid CRC.
-void repairCRC(uint8_t *record) {
+void repairCRC(uint8_t *record, size_t length = CONFIG_RECORD_SIZE) {
   uint32_t crc = 0xffffffff;
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < int(length - 4); ++i) {
     crc ^= record[i];
     for (int j = 0; j < 8; ++j) crc = (crc & 1) ? (crc >> 1) ^ 0xedb88320 : crc >> 1;
   }
   crc ^= 0xffffffff;
-  for (int i = 0; i < 4; ++i) record[20 + i] = (crc >> (8 * i)) & 255;
+  for (int i = 0; i < 4; ++i) record[length - 4 + i] = (crc >> (8 * i)) & 255;
 }
 
 void expectFallback(const uint8_t *record) {
@@ -43,22 +48,42 @@ bool command(Stream &serial, const std::string &text) {
 }
 
 int main() {
-  const DeviceConfig custom = {1.25f, 0.35f, true, false};
+  runActionTests();
+  const DeviceConfig custom = {1.25f, 0.35f, true, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION};
   uint8_t record[CONFIG_RECORD_SIZE];
   assert(encodeConfigRecord(custom, record));
   assert(memcmp(record, "RPNT", 4) == 0);
-  assert(record[4] == 1 && record[5] == 0 && record[6] == 24 && record[7] == 0);
+  assert(record[4] == 2 && record[5] == 0 && record[6] == 36 && record[7] == 0);
   // IEEE-754 1.25 = 0x3fa00000, explicitly little endian.
   assert(record[8] == 0 && record[9] == 0 && record[10] == 0xa0 && record[11] == 0x3f);
   DeviceConfig decoded;
   assert(decodeConfigRecord(record, decoded) && equal(decoded, custom));
   uint8_t damaged[CONFIG_RECORD_SIZE];
+  DeviceConfig mixed = custom;
+  mixed.leftAction = DISABLED_ACTION;
+  mixed.middleAction = {ActionType::KeyboardShortcut, 0x17, 0x03};
+  assert(encodeConfigRecord(mixed, damaged));
+  assert(decodeConfigRecord(damaged, decoded) && equal(decoded, mixed));
+  for (uint8_t badUsage : {0x00, 0x32, 0x66, 0x74, 0xe0}) {
+    assert(encodeConfigRecord(mixed, damaged));
+    damaged[25] = badUsage;
+    repairCRC(damaged);
+    expectFallback(damaged);
+  }
+  assert(encodeConfigRecord(mixed, damaged));
+  damaged[26] = 0x10;
+  repairCRC(damaged);
+  expectFallback(damaged);
+  assert(encodeConfigRecord(mixed, damaged));
+  damaged[21] = 1; // Disabled must have zero payload.
+  repairCRC(damaged);
+  expectFallback(damaged);
   for (size_t offset = 0; offset < CONFIG_RECORD_SIZE; ++offset) {
     memcpy(damaged, record, sizeof(record));
     damaged[offset] ^= 1;
     expectFallback(damaged); // Includes every CRC byte and payload byte.
   }
-  for (int offset : {0, 4, 6, 16, 17, 18, 19}) {
+  for (int offset : {0, 4, 6, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}) {
     memcpy(damaged, record, sizeof(record));
     damaged[offset] = 0xfe;
     repairCRC(damaged);
@@ -136,5 +161,47 @@ int main() {
   command(serial, "SAVE\n");
   assert(EEPROM.commits == beforeCorruption + 1);
   assert(loadDeviceConfig(config) && equal(config, DEFAULT_CONFIG));
+  // Golden v1 fixture created independently with Python struct + zlib.
+  const uint8_t legacy[24] = {0x52, 0x50, 0x4e, 0x54, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00, 0xa0, 0x3f, 0x33, 0x33, 0xb3, 0x3e, 0x01, 0x00, 0x00, 0x00, 0xae, 0xd5, 0xb9, 0xdf};
+  assert(decodeConfigRecord(legacy, decoded, sizeof(legacy)) && equal(decoded, custom));
+  assert(!decodeConfigRecord(legacy, decoded, 23) && equal(decoded, DEFAULT_CONFIG));
+  for (int offset = 0; offset < 24; ++offset) {
+    uint8_t badLegacy[24]; memcpy(badLegacy, legacy, 24); badLegacy[offset] ^= 1;
+    assert(!decodeConfigRecord(badLegacy, decoded, 24) && equal(decoded, DEFAULT_CONFIG));
+  }
+  uint8_t badLegacy[24]; memcpy(badLegacy, legacy, 24);
+  badLegacy[16] = 2; repairCRC(badLegacy, 24);
+  assert(!decodeConfigRecord(badLegacy, decoded, 24));
+  memcpy(badLegacy, legacy, 24);
+  badLegacy[11] = 0x7f; // Valid CRC, invalid sensitivity range.
+  repairCRC(badLegacy, 24);
+  assert(!decodeConfigRecord(badLegacy, decoded, 24) && equal(decoded, DEFAULT_CONFIG));
+  const int beforeMigration = EEPROM.commits;
+  EEPROM.flash.fill(0xff);
+  for (size_t i = 0; i < sizeof(legacy); ++i) EEPROM.flash[i] = legacy[i];
+  assert(loadDeviceConfig(config) && equal(config, custom));
+  assert(EEPROM.commits == beforeMigration && EEPROM.flash[4] == 1);
+  command(serial, "GET\n");
+  assert(serial.output.find("\"leftAction\":\"mouse:left\"") != std::string::npos);
+  command(serial, "SAVE\n");
+  assert(EEPROM.flash[4] == 2 && EEPROM.flash[6] == 36 && EEPROM.commits == beforeMigration + 1);
+  command(serial, "SAVE\n"); assert(EEPROM.commits == beforeMigration + 1);
+  assert(command(serial, "SET rightAction key:03:17\n"));
+  assert(config.rightAction.type == ActionType::KeyboardShortcut && config.rightAction.code == 0x17);
+  assert(serial.output.find("key:03:17") != std::string::npos);
+  const DeviceConfig binding = config;
+  assert(!command(serial, "SET rightAction key:10:17\n"));
+  assert(equal(config, binding) && serial.output.find("INVALID_VALUE") != std::string::npos);
+  command(serial, "SAVE\n");
+  assert(loadDeviceConfig(config) && equal(config,binding));
+  const int savedCount = EEPROM.commits;
+  assert(command(serial, "RESET\n") && equal(config,DEFAULT_CONFIG));
+  assert(EEPROM.commits == savedCount);
+  assert(loadDeviceConfig(config) && equal(config,binding));
+  config.rightAction = {ActionType::KeyboardShortcut,0,1};
+  command(serial, "SAVE\n");
+  assert(serial.output.find("INVALID_CONFIG") != std::string::npos && EEPROM.commits == savedCount);
+  command(serial, "RESET\n"); command(serial, "SAVE\n");
+  assert(loadDeviceConfig(config) && equal(config,DEFAULT_CONFIG));
   std::cout << "PASS: record validation/fallback, load, runtime-only SET/RESET, SAVE validation/readback/failure/wear\n";
 }

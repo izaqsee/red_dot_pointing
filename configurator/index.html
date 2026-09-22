@@ -7,6 +7,7 @@
   <meta name="color-scheme" content="light">
   <title>RedPoint Configurator</title>
   <link rel="stylesheet" href="style.css">
+  <script src="shortcuts.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -43,7 +44,7 @@
         </div>
         <div class="sensitivity">
           <div class="control-heading"><label for="middleSensitivity">Middle sensitivity</label><output id="middleSensitivity-value" for="middleSensitivity">—</output></div>
-          <p class="hint">Middleボタン押下中のポインタ感度</p>
+          <p class="hint">Mouse Middleに割り当てたボタンの押下中の感度</p>
           <input id="middleSensitivity" type="range" min="0" max="10" step="0.01" value="0.4" aria-describedby="middleSensitivity-confirmed">
           <div class="range-labels"><span>0.00×</span><span>10.00×</span></div>
           <p id="middleSensitivity-confirmed" class="confirmed">デバイス確認値: —</p>
@@ -53,6 +54,56 @@
           <div><label class="checkbox-label"><input id="invertY" type="checkbox" aria-describedby="invertY-confirmed"><span>Invert Y<small>上下を反転</small></span></label><p id="invertY-confirmed" class="confirmed">デバイス確認値: —</p></div>
         </div>
       </fieldset>
+    </section>
+
+    <section class="card buttons-card" aria-labelledby="buttons-title">
+      <div class="section-heading"><h2 id="buttons-title">Buttons</h2><span class="tag">PHYSICAL BUTTON MAPPING</span></div>
+      <p id="buttons-support" class="hint">接続後に割当を取得します。</p>
+      <fieldset id="button-controls" disabled>
+        <legend class="sr-only">Button actions</legend>
+        <div class="button-row">
+          <label for="leftAction">Left physical button</label>
+          <p id="leftAction-confirmed" class="confirmed">デバイス確認値: —</p>
+          <p id="leftAction-pending" class="hint"></p>
+          <div class="button-row-controls">
+            <select id="leftAction" aria-label="Left action">
+              <option value="mouse:left">Left Click</option><option value="mouse:middle">Middle Click</option><option value="mouse:right">Right Click</option>
+              <option value="disabled">Disabled</option><option value="shortcut" disabled>Keyboard Shortcut</option>
+            </select>
+            <button id="leftAction-record" type="button">Record Shortcut<span class="sr-only"> for Left</span></button>
+          </div>
+        </div>
+        <div class="button-row">
+          <label for="middleAction">Middle physical button</label>
+          <p id="middleAction-confirmed" class="confirmed">デバイス確認値: —</p>
+          <p id="middleAction-pending" class="hint"></p>
+          <div class="button-row-controls">
+            <select id="middleAction" aria-label="Middle action">
+              <option value="mouse:left">Left Click</option><option value="mouse:middle">Middle Click</option><option value="mouse:right">Right Click</option>
+              <option value="disabled">Disabled</option><option value="shortcut" disabled>Keyboard Shortcut</option>
+            </select>
+            <button id="middleAction-record" type="button">Record Shortcut<span class="sr-only"> for Middle</span></button>
+          </div>
+        </div>
+        <div class="button-row">
+          <label for="rightAction">Right physical button</label>
+          <p id="rightAction-confirmed" class="confirmed">デバイス確認値: —</p>
+          <p id="rightAction-pending" class="hint"></p>
+          <div class="button-row-controls">
+            <select id="rightAction" aria-label="Right action">
+              <option value="mouse:left">Left Click</option><option value="mouse:middle">Middle Click</option><option value="mouse:right">Right Click</option>
+              <option value="disabled">Disabled</option><option value="shortcut" disabled>Keyboard Shortcut</option>
+            </select>
+            <button id="rightAction-record" type="button">Record Shortcut<span class="sr-only"> for Right</span></button>
+          </div>
+        </div>
+      </fieldset>
+      <div id="recorder" class="recorder" hidden>
+        <p id="recorder-title">Recording shortcut…</p>
+        <p id="recorder-preview" role="status" aria-live="polite"></p>
+        <button id="recorder-cancel" type="button">Cancel recording</button>
+      </div>
+      <p class="hint">1つのキー＋Ctrl / Shift / Alt / Metaを記録します。Escapeも割当対象です。Alt+Tab / Win+L / Ctrl+Alt+Deleteなど、OSが捕捉する組合せは記録できない場合があります。</p>
     </section>
 
     <section class="card actions" aria-labelledby="actions-title">

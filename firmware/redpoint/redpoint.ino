@@ -1,4 +1,5 @@
 #include <Mouse.h>
+#include <Keyboard.h>
 #include "config.h"
 #include "config_storage.h"
 
@@ -79,7 +80,7 @@ volatile bool haveLastByte = false;
 
 struct ButtonState {
   uint8_t pin;
-  uint8_t mouseButton;
+  ButtonAction activeAction;
 
   bool rawPressed;
   bool stablePressed;
@@ -88,9 +89,9 @@ struct ButtonState {
 };
 
 ButtonState buttons[3] = {
-  { BTN_L_PIN, MOUSE_LEFT,   false, false, 0 },
-  { BTN_M_PIN, MOUSE_MIDDLE, false, false, 0 },
-  { BTN_R_PIN, MOUSE_RIGHT,  false, false, 0 }
+  { BTN_L_PIN, DISABLED_ACTION, false, false, 0 },
+  { BTN_M_PIN, DISABLED_ACTION, false, false, 0 },
+  { BTN_R_PIN, DISABLED_ACTION, false, false, 0 }
 };
 
 // ============================================================
@@ -266,9 +267,10 @@ void updateButtons() {
       buttons[i].stablePressed = pressed;
 
       if (pressed) {
-        Mouse.press(buttons[i].mouseButton);
+        const ButtonAction &action = i == 0 ? config.leftAction : i == 1 ? config.middleAction : config.rightAction;
+        pressButtonAction(buttons[i].activeAction, action);
       } else {
-        Mouse.release(buttons[i].mouseButton);
+        releaseButtonAction(buttons[i].activeAction);
       }
       #if DEBUG_INPUTS
       const char* name =
@@ -320,7 +322,8 @@ void handleTrackPointPacket(
   int16_t outX;
   int16_t outY;
 
-  if (buttons[1].stablePressed) {
+  const bool middleHeld = mouseActionHeld(MouseButtonCode::Middle);
+  if (middleHeld) {
 
     pointerAccX = 0.0f;
     pointerAccY = 0.0f;
@@ -383,7 +386,7 @@ void handleTrackPointPacket(
     Serial.print(")");
 
     Serial.print(" middle=");
-    Serial.print(buttons[1].stablePressed ? 1 : 0);
+    Serial.print(middleHeld ? 1 : 0);
 
     Serial.print(" S=0x");
     if (status < 0x10) Serial.print("0");
@@ -452,8 +455,17 @@ void setup() {
   // ----------------------------------------------------------
 
   Mouse.begin();
+  Keyboard.begin(); // Pico SDK stack: composite CDC + Mouse + Keyboard.
 
   delay(1000);
+
+  // Latch startup-held buttons only after the USB devices are initialized.
+  for (int i = 0; i < 3; ++i) {
+    if (buttons[i].stablePressed && digitalRead(buttons[i].pin) == LOW) {
+      const ButtonAction &action = i == 0 ? config.leftAction : i == 1 ? config.middleAction : config.rightAction;
+      pressButtonAction(buttons[i].activeAction, action);
+    }
+  }
 
 #if DEBUG_INPUTS
   Serial.println("@DEBUG WZ RP2040 mouse ready");

@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const { parseLine, createLineReader, createProtocol, createSerialTransport, mount } = require("../configurator/app.js");
 
 const defaults = () => ({ pointerSensitivity: 1, middleSensitivity: 0.4, invertX: false, invertY: false });
+const actionDefaults = () => ({ ...defaults(), leftAction: "mouse:left", middleAction: "mouse:middle", rightAction: "mouse:right" });
+const { CODE_MAP, validAction, actionLabel, createShortcutRecorder } = require("../configurator/shortcuts.js");
 const response = (command = "GET", config = defaults()) => `@CONFIG ${JSON.stringify({ ok: true, command, config })}\r\n`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(condition, timeout = 1500) {
@@ -70,10 +72,10 @@ test("write errors and stalled writes are bounded", async () => {
   stalled.close();
 });
 
-function fakePort(savedConfig = null, onSave = () => {}) {
+function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
   let controller;
   const port = {
-    config: savedConfig ? { ...savedConfig } : defaults(), commands: [], writes: [], held: [], hold: false, rejectNext: false,
+    config: savedConfig ? { ...savedConfig } : withActions ? actionDefaults() : defaults(), commands: [], writes: [], held: [], hold: false, rejectNext: false,
     opened: false, closed: false,
     readable: new ReadableStream({ start(c) { controller = c; } }),
     async open(options) { port.opened = true; port.options = options; },
@@ -99,8 +101,8 @@ function fakePort(savedConfig = null, onSave = () => {}) {
           port.rejectNext = false;
           reply = '@CONFIG {"ok":false,"error":"INVALID_VALUE"}\n';
         } else {
-          if (command === "SET") port.config[key] = key.startsWith("invert") ? value === "1" : Number(value);
-          if (command === "RESET") port.config = defaults();
+          if (command === "SET") port.config[key] = key.endsWith("Action") ? value : key.startsWith("invert") ? value === "1" : Number(value);
+          if (command === "RESET") port.config = withActions ? actionDefaults() : defaults();
           if (command === "SAVE") onSave({ ...port.config });
           reply = response(command, port.config);
         }
@@ -112,9 +114,28 @@ function fakePort(savedConfig = null, onSave = () => {}) {
   return port;
 }
 
+function eventTarget() {
+  const events = new Map();
+  return {
+    addEventListener(type, handler) { if (!events.has(type)) events.set(type, new Set()); events.get(type).add(handler); },
+    removeEventListener(type, handler) { events.get(type)?.delete(handler); },
+    fire(type, event = {}) { for (const handler of [...(events.get(type) || [])]) handler(event); },
+    listeners(type) { return events.get(type)?.size || 0; }
+  };
+}
+
+function keyEvent(code, extras = {}) {
+  return {
+    code, key: "deliberately wrong", ctrlKey: false, shiftKey: false, altKey: false, metaKey: false,
+    repeat: false, isComposing: false, prevented: false, stopped: false,
+    preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; },
+    ...extras
+  };
+}
+
 function fakeDocument() {
   const elements = new Map();
-  const doc = { getElementById(id) {
+  const doc = { ...eventTarget(), defaultView: eventTarget(), getElementById(id) {
     if (!elements.has(id)) elements.set(id, {
       type: id.startsWith("invert") ? "checkbox" : "range", value: "", checked: false,
       disabled: false, dataset: {}, textContent: "", events: {},
@@ -126,13 +147,13 @@ function fakeDocument() {
   return doc;
 }
 
-function setupUI() {
+function setupUI(withActions = false) {
   const doc = fakeDocument();
   const ports = [];
   let persisted = null;
   const serial = {
     async requestPort() {
-      const port = fakePort(persisted, config => { persisted = config; });
+      const port = fakePort(persisted, config => { persisted = config; }, withActions);
       ports.push(port);
       return port;
     },
@@ -386,4 +407,146 @@ test("failed SET cancels queued SAVE; rapid repeated Save sends only once", asyn
   assert.equal(port.commands.filter(line => line === "SAVE").length, 1);
   await ui.disconnect();
   assert.notEqual(ui.el("save-status").textContent, "Saved");
+});
+
+
+test("new action fields parse, malformed/partial actions reject, legacy config remains supported", () => {
+  assert.equal(parseLine(response("GET", actionDefaults()).trim()).kind, "config");
+  assert.equal(parseLine(response().trim()).kind, "config");
+  for (const value of ["key:10:17", "key:00:00", "key:00:E0", "key:00:FF", "key:03:17x", "mouse:back", "key:00:66", null]) {
+    assert.equal(parseLine(response("GET", { ...actionDefaults(), rightAction: value }).trim()).kind, "invalid");
+  }
+  assert.equal(parseLine(response("GET", { ...defaults(), leftAction: "mouse:left" }).trim()).kind, "invalid");
+  assert.equal(actionLabel("key:03:17"), "Ctrl + Shift + T");
+  const usages = Object.values(CODE_MAP).map(entry => entry[0]).sort((a,b) => a-b);
+  const expected = Array.from({length: 0x73 - 3}, (_, i) => i + 4).filter(usage => ![0x32, 0x66].includes(usage));
+  assert.deepEqual(usages, expected); // Same allowlist exercised by firmware's exhaustive API test.
+  assert.equal(new Set(usages).size, usages.length);
+  for (const [usage] of Object.values(CODE_MAP)) {
+    assert.ok(validAction(`key:0F:${usage.toString(16).toUpperCase().padStart(2,"0")}`));
+  }
+});
+
+test("recorder captures only while active, previews modifiers, ignores repeat, and records code not key", () => {
+  const target = fakeDocument();
+  const previews = [], commits = [];
+  const recorder = createShortcutRecorder(target, { preview: text => previews.push(text), commit: value => commits.push(value), cancel() {} });
+  const normal = keyEvent("KeyT"); target.fire("keydown",normal); assert.equal(normal.prevented,false);
+  recorder.start();
+  const ctrl = keyEvent("ControlLeft", {ctrlKey:true}); target.fire("keydown",ctrl);
+  assert.ok(ctrl.prevented && ctrl.stopped); assert.equal(previews.at(-1),"Ctrl");
+  target.fire("keydown",keyEvent("ShiftLeft", {ctrlKey:true,shiftKey:true}));
+  assert.equal(previews.at(-1),"Ctrl + Shift");
+  target.fire("keydown",keyEvent("KeyT", {ctrlKey:true,shiftKey:true,repeat:true}));
+  assert.equal(commits.length,0);
+  target.fire("keydown",keyEvent("KeyT", {ctrlKey:true,shiftKey:true}));
+  assert.deepEqual(commits,["key:03:17"]);
+  assert.equal(target.listeners("keydown"),0);assert.equal(target.listeners("keyup"),0);
+  const after = keyEvent("KeyQ");target.fire("keydown",after);assert.equal(after.prevented,false);
+});
+
+test("recorder supports single keys, Escape/Backspace, arrows/keypad, releases modifiers and explicit cancel", () => {
+  const target = fakeDocument(); let committed, preview, cancelled=0;
+  const recorder = createShortcutRecorder(target, { preview: text => preview=text, commit: value => committed=value, cancel: () => cancelled++ });
+  for (const [code, expected, extras] of [
+    ["KeyA","key:00:04",{}], ["Escape","key:00:29",{}], ["Backspace","key:00:2A",{}],
+    ["F5","key:00:3E",{}], ["ArrowLeft","key:04:50",{altKey:true}], ["NumpadAdd","key:00:57",{}]
+  ]) {
+    recorder.start();target.fire("keydown",keyEvent(code,extras));assert.equal(committed,expected);
+  }
+  recorder.start();target.fire("keydown",keyEvent("ControlRight",{ctrlKey:true}));
+  target.fire("keyup",keyEvent("ControlRight"));assert.match(preview,/キーを押して/);
+  committed=null;recorder.cancel();assert.equal(cancelled,1);assert.equal(committed,null);
+  assert.equal(target.listeners("keydown"),0);
+  recorder.start();target.defaultView.fire("blur", {target: target.defaultView});assert.equal(cancelled,2);
+  assert.equal(target.listeners("keyup"),0);
+});
+
+test("disabling the focused Record button does not cancel recording via captured blur", () => {
+  const target = fakeDocument(); let committed = null, cancelled = 0;
+  const recorder = createShortcutRecorder(target, {
+    preview() {}, commit: value => committed = value, cancel: () => cancelled++
+  });
+  recorder.start();
+  target.defaultView.fire("blur", {target: target.getElementById("rightAction-record")});
+  assert.equal(cancelled, 0);
+  assert.equal(target.listeners("keydown"), 1);
+  target.fire("keydown", keyEvent("KeyT", {ctrlKey: true, shiftKey: true}));
+  assert.equal(committed, "key:03:17");
+  assert.equal(target.listeners("keydown"), 0);
+});
+
+test("unsupported/composition/AltGraph leave the binding untouched and recording can continue", () => {
+  const target=fakeDocument();let result=null, error=false;
+  const recorder=createShortcutRecorder(target,{preview:(_,bad)=>error=bad,commit:value=>result=value,cancel() {}});
+  recorder.start();
+  for (const event of [keyEvent("IntlYen"),keyEvent("Unidentified"),keyEvent("KeyT",{isComposing:true}),keyEvent("KeyT",{getModifierState:()=>true})]) {
+    target.fire("keydown",event);assert.equal(result,null);assert.equal(error,true);assert.equal(target.listeners("keydown"),1);
+  }
+  target.fire("keydown",keyEvent("KeyT"));assert.equal(result,"key:00:17");
+});
+
+test("old firmware keeps pointer controls but disables all action requests", async () => {
+  const ui=setupUI();const port=await ui.connect();
+  assert.equal(ui.el("button-controls").disabled,true);
+  assert.match(ui.el("buttons-support").textContent,/Firmware update required/);
+  ui.el("rightAction").value="disabled";ui.el("rightAction").fire("change");
+  ui.el("rightAction-record").fire("click");
+  assert.deepEqual(port.commands,["GET"]);assert.equal(ui.doc.listeners("keydown"),0);
+  assert.equal(ui.el("pointer-controls").disabled,false);
+  await ui.disconnect();
+});
+
+test("mouse/disabled selection, recorder, device confirmation, SAVE, RESET and reconnect integrate", async () => {
+  const ui=setupUI(true);const port=await ui.connect();
+  assert.equal(ui.el("button-controls").disabled,false);
+  for (const value of ["mouse:middle","disabled","mouse:right"]) {
+    ui.el("rightAction").value=value;ui.el("rightAction").fire("change");
+    await until(()=>ui.el("rightAction-confirmed").textContent===`デバイス確認値: ${actionLabel(value)}`);
+    assert.equal(port.commands.at(-1),`SET rightAction ${value}`);
+  }
+  port.hold=true;
+  ui.el("rightAction-record").fire("click");
+  assert.equal(ui.el("recorder").hidden,false);assert.equal(ui.el("save").disabled,true);
+  ui.doc.fire("keydown",keyEvent("ControlLeft",{ctrlKey:true}));
+  assert.equal(ui.el("recorder-preview").textContent,"Ctrl");
+  ui.doc.fire("keydown",keyEvent("KeyT",{ctrlKey:true,shiftKey:true}));
+  await until(()=>port.commands.at(-1)==="SET rightAction key:03:17");
+  assert.equal(ui.el("rightAction-confirmed").textContent,"デバイス確認値: Right Click");
+  assert.match(ui.el("rightAction-pending").textContent,/Ctrl \+ Shift \+ T/);
+  assert.equal(ui.el("save-status").textContent,"Unsaved changes");
+  assert.equal(ui.el("recorder").hidden,true);assert.equal(ui.doc.listeners("keydown"),0);
+  port.hold=false;port.release();
+  await until(()=>ui.el("rightAction-confirmed").textContent==="デバイス確認値: Ctrl + Shift + T");
+  ui.el("save").fire("click");await until(()=>ui.el("save-status").textContent==="Saved");
+  ui.el("reset").fire("click");await until(()=>ui.el("rightAction-confirmed").textContent==="デバイス確認値: Right Click");
+  assert.equal(ui.el("save-status").textContent,"Unsaved changes");
+  await ui.disconnect();await ui.connect();
+  assert.equal(ui.el("rightAction-confirmed").textContent,"デバイス確認値: Ctrl + Shift + T");
+  assert.equal(ui.el("save-status").textContent,"保存状態未確認");
+  await ui.disconnect();
+});
+
+test("unsupported key/cancel/disconnect do not replace confirmed binding or leak key listeners", async () => {
+  const ui=setupUI(true);const port=await ui.connect();
+  ui.el("leftAction-record").fire("click");
+  ui.doc.fire("keydown",keyEvent("IntlRo"));assert.match(ui.el("recorder-preview").textContent,/未対応/);
+  assert.equal(ui.el("leftAction-confirmed").textContent,"デバイス確認値: Left Click");
+  ui.el("recorder-cancel").fire("click");
+  assert.equal(ui.el("recorder").hidden,true);assert.deepEqual(port.commands,["GET"]);
+  assert.equal(ui.doc.listeners("keydown"),0);
+  ui.el("leftAction-record").fire("click");await ui.disconnect();
+  assert.equal(ui.el("recorder").hidden,true);assert.equal(ui.doc.listeners("keyup"),0);
+});
+
+test("action timeout resync uses returned action values and drops late SET", async () => {
+  const ui=setupUI(true);const port=await ui.connect();port.hold=true;
+  ui.el("middleAction").value="disabled";ui.el("middleAction").fire("change");
+  await until(()=>port.commands.length===3,3000);
+  assert.deepEqual(port.commands,["GET","SET middleAction disabled","GET"]);
+  port.hold=false;port.release();
+  await until(()=>ui.el("connection-status").textContent==="Connected");
+  assert.equal(ui.el("middleAction-confirmed").textContent,"デバイス確認値: Disabled");
+  assert.notEqual(ui.el("save-status").textContent,"Saved");
+  await ui.disconnect();
 });

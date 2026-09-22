@@ -37,9 +37,9 @@ float getFloat(const uint8_t *p) {
   memcpy(&value, &bits, sizeof(value));
   return value;
 }
-uint32_t crc32(const uint8_t *p) {
+uint32_t crc32(const uint8_t *p, size_t length) {
   uint32_t crc = 0xffffffff;
-  for (size_t i = 0; i < CRC_OFFSET; ++i) {
+  for (size_t i = 0; i < length; ++i) {
     crc ^= p[i];
     for (int bit = 0; bit < 8; ++bit) {
       crc = (crc >> 1) ^ ((crc & 1) ? CRC_POLYNOMIAL : 0);
@@ -52,7 +52,8 @@ uint32_t crc32(const uint8_t *p) {
 bool validDeviceConfig(const DeviceConfig &value) {
   return isfinite(value.pointerSensitivity) && isfinite(value.middleSensitivity) &&
     value.pointerSensitivity >= MIN_SENSITIVITY && value.pointerSensitivity <= MAX_SENSITIVITY &&
-    value.middleSensitivity >= MIN_SENSITIVITY && value.middleSensitivity <= MAX_SENSITIVITY;
+    value.middleSensitivity >= MIN_SENSITIVITY && value.middleSensitivity <= MAX_SENSITIVITY &&
+    validButtonAction(value.leftAction) && validButtonAction(value.middleAction) && validButtonAction(value.rightAction);
 }
 
 bool encodeConfigRecord(const DeviceConfig &value, uint8_t *record) {
@@ -65,17 +66,39 @@ bool encodeConfigRecord(const DeviceConfig &value, uint8_t *record) {
   putFloat(record + 12, value.middleSensitivity);
   record[16] = value.invertX ? 1 : 0;
   record[17] = value.invertY ? 1 : 0;
-  put32(record + CRC_OFFSET, crc32(record));
+  const ButtonAction actions[] = {value.leftAction, value.middleAction, value.rightAction};
+  for (size_t i = 0; i < 3; ++i) {
+    const size_t offset = 20 + i * 4;
+    record[offset] = static_cast<uint8_t>(actions[i].type);
+    record[offset + 1] = actions[i].code;
+    record[offset + 2] = actions[i].modifiers;
+  }
+  put32(record + CRC_OFFSET, crc32(record, CRC_OFFSET));
   return true;
 }
 
-bool decodeConfigRecord(const uint8_t *record, DeviceConfig &value) {
+bool decodeConfigRecord(const uint8_t *record, DeviceConfig &value, size_t size) {
   value = DEFAULT_CONFIG;
-  if (get32(record) != CONFIG_MAGIC || get16(record + 4) != CONFIG_FORMAT_VERSION ||
-      get16(record + 6) != CONFIG_RECORD_SIZE || get32(record + CRC_OFFSET) != crc32(record) ||
+  if (size < CONFIG_RECORD_V1_SIZE || get32(record) != CONFIG_MAGIC) return false;
+  const uint16_t version = get16(record + 4);
+  if (version != 1 && version != CONFIG_FORMAT_VERSION) return false;
+  const size_t length = version == 1 ? CONFIG_RECORD_V1_SIZE : CONFIG_RECORD_SIZE;
+  const size_t crcOffset = length - sizeof(uint32_t);
+  if (size < length || get16(record + 6) != length || get32(record + crcOffset) != crc32(record, crcOffset) ||
       record[16] > 1 || record[17] > 1 || record[18] != 0 || record[19] != 0) return false;
-  const DeviceConfig decoded = {getFloat(record + 8), getFloat(record + 12),
-                                record[16] == 1, record[17] == 1};
+  DeviceConfig decoded = DEFAULT_CONFIG; // v1 migration adds default actions in RAM only.
+  decoded.pointerSensitivity = getFloat(record + 8);
+  decoded.middleSensitivity = getFloat(record + 12);
+  decoded.invertX = record[16] == 1;
+  decoded.invertY = record[17] == 1;
+  if (version == CONFIG_FORMAT_VERSION) {
+    ButtonAction *actions[] = {&decoded.leftAction, &decoded.middleAction, &decoded.rightAction};
+    for (size_t i = 0; i < 3; ++i) {
+      const size_t offset = 20 + i * 4;
+      if (record[offset + 3] != 0) return false;
+      *actions[i] = {static_cast<ActionType>(record[offset]), record[offset + 1], record[offset + 2]};
+    }
+  }
   if (!validDeviceConfig(decoded)) return false;
   value = decoded;
   return true;

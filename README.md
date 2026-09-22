@@ -1,7 +1,7 @@
 # RedPoint
 
 TrackPoint互換モジュールのPS/2入力をRP2040でUSB HID Mouseへ変換する、
-自作ポインティングデバイスです。独立したL/M/Rボタンと、Middle押下中の感度変更に対応します。
+自作ポインティングデバイスです。独立したL/M/RボタンへのMouse／Keyboard shortcut／Disabled割当と、logical Mouse Middle押下中の感度変更に対応します。
 
 ## Firmwareのbuild / upload
 
@@ -25,9 +25,11 @@ VS Codeでは既存の`.vscode/tasks.json`から次のタスクを実行でき�
 - **RedPoint: Build & Upload**（build後、COM13へupload）
 
 Arduino IDEでは`firmware/redpoint/redpoint.ino`を開きます。
-同じフォルダの`config*`ファイル（設定・レコード符号化・保存処理）も必要です。
+同じフォルダの`config*`（設定・レコード・保存）、`button_action.*`（Actionと所有数）、
+`keyboard_mapping.*`（HID usageからcore APIへの変換）も必要です。
 upload前にConfiguratorのDisconnectを押し、Serial Monitorなども閉じてください。
-ファームウェアはArduino標準USBのMouseライブラリを使用します。既存のUSB設定を維持してください。
+ファームウェアはcore標準のMouse / Keyboardライブラリを使用します。USB Stackは既存のPico SDKを維持してください。
+Keyboard追加後はUSBが再列挙され、COM番号が変わる場合があります。
 
 ## Configuratorを起動する
 
@@ -56,8 +58,29 @@ Web Serialはsecure context（localhostまたはHTTPS）で使用します。
 7. 終了時は**Disconnect**を押す。
 
 感度の範囲は0～10、sliderの刻みは0.01です。0はそのモードのpointer移動を停止します。
-Middle sensitivityは通常感度と乗算せず、Middle押下中に直接選択される倍率です。
+Middle sensitivityは通常感度と乗算せず、logical Mouse Middle押下中に直接選択される倍率です。
 defaultは通常1.00、Middle 0.40、反転なしです。
+
+## ボタン割当とShortcut Recorder
+
+Buttonsの各物理ボタンでLeft / Middle / Right ClickまたはDisabledを選択できます。
+Keyboardは**Record Shortcut**を押し、実際のキーを入力します。modifierの押下状態を表示し、
+最初のnon-modifier keyで記録を完了してSETします。操作値とデバイス確認値は分けて表示し、
+デバイス応答後に確定します。永続化には明示的なSaveが必要です。
+
+- Ctrl / Shift / Alt / Metaと1キー、または修飾なし1キーに対応します。例: A、Escape、F5、Ctrl+Shift+T、Alt+Left。
+- EscapeとBackspaceも割当可能です。取消は**Cancel**、解除は**Disabled**を使います。
+- 記録中だけkeydown/keyupを捕捉し、repeatを無視します。通常時のページのキー操作は横取りしません。
+- 未対応キーは既存割当を保持してエラー表示します。Cancel、フォーカス喪失、ページ非表示、切断で記録を終了します。
+- `KeyboardEvent.code`からHID usageへ変換します。英数字、標準記号、F1～F24、navigation/arrows、numpad、IntlBackslash、ContextMenu等に対応します。対応表は[shortcuts.js](configurator/shortcuts.js)にあります。
+- キー位置を保存するため、実際の文字はOS側のkeyboard layoutに依存します。記号の表示名はUS配列基準です。左右modifierは区別しません。
+- JIS固有キー、IME入力、AltGraph、media/Fn、modifierだけの割当は未対応です。Alt+Tab、Win+L、Ctrl+Alt+DeleteなどOS/browserが先に処理するキーは記録できない場合があります。
+
+押下時のActionを保持してreleaseするため、押下中に設定を変えても旧Actionを正しく解放します。
+同じMouse/key/modifierを複数ボタンが共有した場合は最後のreleaseまで保持します。
+異なるショートカットを同時に押すとmodifierは合成されます。長押しのkey repeatはOSに従います。
+Middle感度は物理ボタン位置ではなく、現在heldのMouse Middle Actionに従います。
+旧4項目firmwareではPointer設定を使えますが、Buttonsはfirmware更新案内とともに無効になります。
 
 ## Runtime設定とFlash保存
 
@@ -65,11 +88,13 @@ defaultは通常1.00、Middle 0.40、反転なしです。
 - **SAVE**: 現在の設定をFlashへ明示保存し、再起動後も読み込む。
 - **RESET**: RAMのみdefaultに戻す。SAVEしなければ再起動後は以前の保存値に戻る。
 - **RESET → SAVE**: defaultをFlashへ保存する。
-- **未保存・不正な保存データ**: 起動時に4項目すべてdefaultへfallbackする。
+- **未保存・不正な保存データ**: 起動時に7項目すべてdefaultへfallbackする。
 
 保存にはPhilhower core 6.1.0のEEPROM emulationを使用します。filesystemは使いません。
-24-byteの固定形式にmagic、version、record長、設定、CRC32を保持し、
-起動時に整合性・値の範囲を検証します。詳細は[通信仕様](docs/protocol.md#flash保存形式と起動)を参照してください。
+36-byteのv2固定形式にmagic、version、record長、設定、CRC32を保持し、
+起動時に整合性・値の範囲を検証します。有効な旧v1 (24 bytes)はPointer設定を保持し、
+defaultのボタン割当をRAMへ追加します。移行時にFlashを書かず、次のSaveでv2を保存します。
+不正なv1/v2は完全defaultへ戻ります。詳細は[通信仕様](docs/protocol.md#flash保存形式と起動)を参照してください。
 SET、RESET、起動時はFlashを書かず、SAVE時も前回保存内容と同一ならerase/writeを省略します。
 
 Save成功はデバイスでのcommitとFlash再読込照合が完了した後に通知されます。
@@ -89,12 +114,12 @@ EEPROM領域やFlash容量の変更、全消去を伴う書き込みでは保存
 設定値・Serial dataの外部送信、analytics、localStorageへの保存は行いません。
 すべて同梱のローカルassetを使い、CSPでもアプリのネットワーク接続を無効化しています。
 GitHub Pages版でもデバイスデータは外部serverへ送りません。GitHubには静的ページの通常の取得だけが発生します。
-今回追加したworkflowは未deployで、GitHub側の設定変更も行っていません。
+既存のPages workflowをそのまま利用します。この変更ではpush／deployやGitHub側の設定変更は行いません。
 
 ## 通信とエラー時の動作
 
 通信仕様のsource of truthは[docs/protocol.md](docs/protocol.md)です。
-GET / SET / RESETの形式は維持し、SAVEの成功・失敗応答だけを追加しています。
+GET / SET / RESET / SAVEの形式を維持し、configへleftAction / middleAction / rightActionを追加しています。
 
 - 115200 baud / 8N1 / flow controlなし。`@CONFIG`と`@DEBUG`を分類する。
 - 分割された受信chunkを行へ復元する。debug・未知行・不正JSONは設定へ混ぜず無視する。
@@ -151,8 +176,10 @@ python tests/run_firmware_tests.py
 
 firmware hostテストにはC++ compilerが必要です。WindowsではVisual Studio C++ Build Toolsを自動検出し、
 Linux/macOSではc++ / g++ / clang++を使います。CXXでcompiler実行ファイルも指定できます。
-本番の設定・保存コードをmock EEPROMで実行し、実機へアクセスしません。
-record破損、範囲外、CRC、default fallback、SET/RESETの非永続性、SAVEの検証・失敗・再読込・同値書込省略を確認します。
+本番の設定・保存・Actionコードをmock EEPROM / Mouse / Keyboardで実行し、実機へアクセスしません。
+record破損、範囲外、CRC、default fallback、v1移行、v2保存、SET/RESETの非永続性、
+SAVEの検証・失敗・再読込・同値書込省略、Actionのlatch、重複所有、共有modifierのreleaseを確認します。
+WebテストはRecorder、旧firmware互換、デバイス応答による確定、保存状態、timeout再同期も確認します。
 
 テストはmockのSerial streamを使用します。実機では以下を確認してください。
 
@@ -171,11 +198,33 @@ record破損、範囲外、CRC、default fallback、SET/RESETの非永続性、S
 12. 未保存領域、不正magic/version/CRC/値のfixtureでdefault fallbackを確認する（通常利用機のFlashを不用意に壊さず、テスト機で行う）。
 13. Pagesのproject URLからCSS/JSが読み込まれ、Connect・SET・SAVE・再接続できる。
 
+## ボタン割当の実機確認
+
+このphaseの自動テスト・buildはHID実機確認の代わりにはなりません。
+新firmwareをbuild/uploadし、Mouse / Keyboard / Serialが同時に認識されることから確認してください。
+既存v1移行の確認では、更新前にPointer設定をSaveし、全Flash消去を行わず更新します。
+
+1. defaultのL/M/R click、drag、移動、小数移動、反転とMiddle中0.40倍がbaselineと同じ。
+2. RightのRecord ShortcutでCtrl+Shift+Tを記録し、デバイス確認値の反映を待つ。
+3. Rightの押下でshortcutが発火し、release後にCtrl/Shift/Tが残らない。
+4. Save成功後にUSBを抜き差ししてbindingが保持される。
+5. RightをMouse Middleにすると、Right押下中にMiddle感度になる。
+6. MiddleをKeyboardへ割り当てると、Middle物理ボタンだけではMiddle感度にならない。
+7. 2ボタンを同じshortcutにし、一方のreleaseで残るボタンのheld stateが消えない。Mouse Left重複も確認する。
+8. Ctrl+CとCtrl+Shift+T等の共有modifierについて、release順を入れ替えてstuckしない。
+9. ボタンを押したまま別ActionへSET／RESETし、その後releaseして旧Actionが残らない。次回DOWNから新Actionになる。
+10. ResetでPointerとL/M/Rのdefault割当へ戻る。
+11. Resetのみで再起動すると以前Saveしたbindingへ戻る。
+12. Reset→Save→再起動でdefault割当になる。
+13. 有効v1から起動するとPointer/invert設定を保持してdefault bindingsを追加する。Save後の再起動でも保持される。
+
+併せてDisabled、Escape/Backspace、unsupported key、Cancel、記録中の切断、旧firmwareへの接続、
+Pagesのproject URLでのRecorder、SAVE直後のPS/2再同期とdebugを確認してください。
+
 ## 次phase候補
 
 - 実機での長時間操作・debug負荷を含む検証とUX調整
-- 保存途中の電源断対策（二重化）、format migration、書込寿命の評価
-- GitHub Pages初回deploymentと実機からの接続確認
+- 保存途中の電源断対策（二重化）、書込寿命の評価
 - 必要になった段階でのWebHID用transport / firmware report設計
 
-firmware update、button remapping、acceleration curve editorは未実装です。
+firmware update、acceleration curve editor、macro、multi-step chord、long press、double click、layerは未実装です。
