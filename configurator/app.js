@@ -7,6 +7,7 @@
   const { validAction, actionLabel, createShortcutRecorder } =
     typeof module !== "undefined" && module.exports ? require("./shortcuts.js") : window.RedPointShortcuts;
   const RESPONSE_TIMEOUT_MS = 2000;
+  const AUTO_PROBE_TIMEOUT_MS = 1200;
   const EDIT_DEBOUNCE_MS = 120;
   const MAX_RESPONSE_LINE = 2048;
 
@@ -205,12 +206,81 @@
     };
   }
 
+  function authorizedCandidates(ports) {
+    return [...new Set(ports)].filter(port => {
+      try { return port.getInfo().usbVendorId === 0x2e8a; }
+      catch { return false; }
+    });
+  }
+
+  // One owner for open, GET identity/sync and cleanup, for probes and sessions.
+  function createDeviceConnection(port, onLost = () => {}, timeoutMs = RESPONSE_TIMEOUT_MS) {
+    let opening = null;
+    let opened = false;
+    let closing = false;
+    let lost = false;
+    let closePromise = null;
+    const active = { port };
+    active.protocol = createProtocol(text => active.transport.send(text), timeoutMs);
+    active.fail = error => {
+      if (closing || lost) return;
+      lost = true;
+      active.protocol.close();
+      onLost(error);
+    };
+    active.transport = createSerialTransport(port, text => active.protocol.accept(text), active.fail);
+    active.openAndSync = async () => {
+      opening = port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
+      await opening;
+      opened = true;
+      if (closing || lost) throw protocolError("DISCONNECTED");
+      active.transport.start();
+      // The existing validated GET parser is also the identity check.
+      const config = await active.protocol.request("GET", { resync: true });
+      if (closing || lost) throw protocolError("DISCONNECTED");
+      return config;
+    };
+    active.close = () => {
+      if (closePromise) return closePromise;
+      closing = true;
+      active.heartbeat?.stop();
+      active.protocol.close();
+      closePromise = (async () => {
+        // If unplug/cancel happens while open is pending, close only after it
+        // settles. Never close a port whose open failed (another owner may use it).
+        await opening?.catch(() => {});
+        if (opened) await active.transport.close();
+      })();
+      return closePromise;
+    };
+    return active;
+  }
+
+  async function probeAuthorizedPorts(ports, createConnection = port => createDeviceConnection(port, undefined, AUTO_PROBE_TIMEOUT_MS), isCurrent = () => true) {
+    const matches = [];
+    for (const port of ports) {
+      if (!isCurrent()) break;
+      const active = createConnection(port);
+      try {
+        await active.openAndSync();
+        if (isCurrent()) matches.push(port);
+      } catch { /* A failed candidate does not prevent probing the next one. */ }
+      finally {
+        // A close failure aborts discovery: do not risk opening two ports.
+        await active.close();
+      }
+    }
+    return matches;
+  }
+
   // UI: confirmed configuration comes only from a matched device response.
   function mount(document, serial, secureContext) {
     const byId = id => document.getElementById(id);
     const controls = Object.fromEntries(KEYS.map(key => [key, byId(key)]));
     const supported = Boolean(serial && secureContext);
     let session = null;
+    let attempt = null;
+    let autoConnectSuppressed = false;
     let connectionState = "disconnected";
     let confirmed = null;
     const drafts = new Map();
@@ -276,7 +346,7 @@
       else if (changedSinceSync) saveState = "Unsaved changes";
       byId("save-status").textContent = saveState;
       byId("save-status").dataset.saved = String(saveState === "Saved");
-      const labels = { disconnected: "Disconnected", connecting: "Connecting…", syncing: "Connected · Syncing…", connected: "Connected", disconnecting: "Disconnecting…" };
+      const labels = { discovering: "Checking authorized devices…", disconnected: "Disconnected", connecting: "Connecting…", syncing: "Connected · Syncing…", connected: "Connected", disconnecting: "Disconnecting…" };
       byId("connection-status").textContent = labels[connectionState];
       byId("connection-status").dataset.state = connectionState;
       for (const key of KEYS) {
@@ -306,6 +376,9 @@
       saveRequested = false;
     }
     async function disconnect(reason = "切断しました。再接続できます。", kind = "info") {
+      if (connectionState === "disconnecting") return;
+      const previousAttempt = attempt;
+      if (previousAttempt) previousAttempt.cancelled = true;
       const previous = session;
       session = null; // Ignore responses/tasks belonging to the old connection.
       discardDrafts();
@@ -318,11 +391,12 @@
       previous?.protocol.close();
       render();
       try {
-        await previous?.transport.close();
+        await previous?.close();
       } catch (error) {
         reason += ` ポート解放エラー: ${error.message}。再接続できない場合はUSBを挿し直してください。`;
         kind = "error";
       }
+      if (attempt === previousAttempt) attempt = null;
       connectionState = "disconnected";
       byId("port-info").textContent = "USB Serial · 115200 baud";
       message(reason, kind);
@@ -392,24 +466,36 @@
         }
       }
     }
-    async function connect() {
-      if (connectionState !== "disconnected" || !supported) return;
-      connectionState = "connecting";
-      message("RedPointのSerialポートを選んでください。");
+    function beginAttempt(state) {
+      if (!supported || attempt || session || connectionState !== "disconnected") return null;
+      attempt = { cancelled: false };
+      connectionState = state;
       render();
-      let port;
-      let opened = false;
-      let active;
+      return attempt;
+    }
+    const currentAttempt = owner => attempt === owner && !owner.cancelled;
+    function newConnection(port, timeoutMs = RESPONSE_TIMEOUT_MS) {
+      const active = createDeviceConnection(port, error => {
+        if (session !== active) return;
+        if (!attempt && connectionState === "connected") {
+          void disconnect(`接続が失われました: ${error.message}`, "error");
+        }
+      }, timeoutMs);
+      session = active;
+      return active;
+    }
+    async function connectSelectedPort(port, owner) {
+      const active = newConnection(port);
+      connectionState = "syncing";
+      message("RedPointをGETで確認しています…");
+      render();
       try {
-        port = await serial.requestPort();
-        await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
-        opened = true;
-        active = {};
-        active.port = port;
-        active.transport = createSerialTransport(port, text => active.protocol.accept(text), error => {
-          if (session === active) void disconnect(`接続が失われました: ${error.message}`, "error");
-        });
-        active.protocol = createProtocol(text => active.transport.send(text));
+        const config = await active.openAndSync();
+        if (!currentAttempt(owner) || session !== active) return;
+        confirmed = config;
+        const info = port.getInfo();
+        byId("port-info").textContent = info.usbVendorId === undefined ? "USB Serial · 115200 baud" :
+          `USB ${info.usbVendorId.toString(16).padStart(4, "0")}:${(info.usbProductId ?? 0).toString(16).padStart(4, "0")} · 115200 baud`;
         active.heartbeat = createHeartbeat(active.protocol,
           () => session === active && connectionState === "connected" && !busy &&
             !drafts.size && !resetRequested && !saveRequested && !recordingKey,
@@ -418,37 +504,74 @@
             if (error.code === "TIMEOUT") {
               await recover(active);
               if (session === active) render();
-            }
-            else await disconnect(`Heartbeat通信エラー: ${error.message}`, "error");
+            } else await disconnect(`Heartbeat通信エラー: ${error.message}`, "error");
           }, () => { if (session === active) void pump(); });
-        session = active;
-        connectionState = "syncing";
-        const info = port.getInfo();
-        byId("port-info").textContent = info.usbVendorId === undefined ? "USB Serial · 115200 baud" :
-          `USB ${info.usbVendorId.toString(16).padStart(4, "0")}:${(info.usbProductId ?? 0).toString(16).padStart(4, "0")} · 115200 baud`;
-        active.transport.start();
-        message("接続しました。デバイスの設定を取得しています…");
-        render();
-        // Leading newline also terminates any incomplete command from an earlier session.
-        const config = await active.protocol.request("GET", { resync: true });
-        if (session !== active) return;
-        confirmed = config;
+        attempt = null;
         connectionState = "connected";
-        active.heartbeat?.start();
+        active.heartbeat.start();
         message("設定を取得しました。操作した項目はデバイスの応答後に確定します。");
+        render();
       } catch (error) {
-        if (active && session !== active) return;
-        if (active && error.code === "TIMEOUT") await recover(active);
-        else if (active) await disconnect(`接続エラー: ${error.message}`, "error");
-        else {
-          if (opened) await port.close().catch(() => {});
-          connectionState = "disconnected";
-          message(error.name === "NotFoundError" ? "ポート選択をキャンセルしました。" :
-            `接続できませんでした: ${error.message}。Serial Monitorなどでポートを使用していないか確認してください。`,
-          error.name === "NotFoundError" ? "info" : "error");
-        }
+        try { await active.close(); }
+        catch (closeError) { throw new Error(`ポート解放エラー: ${closeError.message}。USBを挿し直してください。`); }
+        finally { if (session === active) session = null; }
+        throw error;
       }
+    }
+    function finishAttempt(owner, text, kind = "info") {
+      if (!currentAttempt(owner)) return;
+      attempt = null;
+      session = null;
+      connectionState = "disconnected";
+      confirmed = null;
+      message(text, kind);
       render();
+    }
+    async function connectManual() {
+      const owner = beginAttempt("connecting");
+      if (!owner) return;
+      message("RedPointのSerialポートを選んでください。");
+      try {
+        // Keep the picker unfiltered so devices without VID metadata still work.
+        // Only this click handler may request new browser permission.
+        const port = await serial.requestPort();
+        if (currentAttempt(owner)) await connectSelectedPort(port, owner);
+      } catch (error) {
+        finishAttempt(owner, error.name === "NotFoundError" ? "ポート選択をキャンセルしました。" :
+          `RedPointとして接続できませんでした: ${error.message}。Serial Monitorを閉じ、Connectから再試行してください。`,
+        error.name === "NotFoundError" ? "info" : "error");
+      }
+    }
+    async function autoConnectAuthorizedPorts() {
+      if (autoConnectSuppressed || !serial?.getPorts) return;
+      const owner = beginAttempt("discovering");
+      if (!owner) return;
+      message("許可済みのRedPointを確認しています…");
+      try {
+        const ports = authorizedCandidates(await serial.getPorts());
+        if (!currentAttempt(owner)) return;
+        if (!ports.length) {
+          finishAttempt(owner, "ConnectからRedPointへのアクセスを許可してください。");
+          return;
+        }
+        let selected = ports[0];
+        if (ports.length > 1) {
+          const matches = await probeAuthorizedPorts(ports,
+            port => newConnection(port, AUTO_PROBE_TIMEOUT_MS), () => currentAttempt(owner));
+          if (!currentAttempt(owner)) return;
+          session = null;
+          if (matches.length !== 1) {
+            finishAttempt(owner, matches.length ?
+              "複数のRedPointが見つかりました。Connectから使用するデバイスを選んでください。" :
+              "許可済みportをRedPointとして確認できませんでした。Connectから再試行してください。");
+            return;
+          }
+          selected = matches[0];
+        }
+        if (currentAttempt(owner)) await connectSelectedPort(selected, owner);
+      } catch (error) {
+        finishAttempt(owner, `自動接続できませんでした: ${error.message}。Connectから再試行してください。`);
+      }
     }
     for (const key of KEYS) {
       controls[key].addEventListener("input", () => {
@@ -478,8 +601,11 @@
       });
     }
     byId("recorder-cancel").addEventListener("click", () => recorder.cancel());
-    byId("connect").addEventListener("click", () => { void connect(); });
-    byId("disconnect").addEventListener("click", () => { void disconnect(); });
+    byId("connect").addEventListener("click", () => { void connectManual(); });
+    byId("disconnect").addEventListener("click", () => {
+      autoConnectSuppressed = true;
+      void disconnect();
+    });
     byId("reset").addEventListener("click", () => {
       if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey) return;
       discardDrafts();
@@ -497,16 +623,21 @@
       void pump();
     });
     serial?.addEventListener("disconnect", event => {
-      if (session && event.target === session.port) void disconnect("USBデバイスが切断されました。再接続できます。", "error");
+      if (session && (event.port || event.target) === session.port) {
+        session.fail(new Error("USBデバイスが切断されました。"));
+      }
     });
+    serial?.addEventListener("connect", () => { void autoConnectAuthorizedPorts(); });
     if (!supported) message(secureContext ?
       "このブラウザはWeb Serialに対応していません。デスクトップ版ChromeまたはEdgeで開いてください。" :
       "Web Serialには安全な接続が必要です。localhostまたはHTTPSで開いてください。", "error");
+    if (supported) message("ConnectからRedPointへのアクセスを許可してください。");
     render();
+    if (supported) void autoConnectAuthorizedPorts();
   }
 
   // Node's built-in test runner can exercise the actual code without a build tool.
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, mount };
+    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
   } else mount(document, navigator.serial, window.isSecureContext);
 })();

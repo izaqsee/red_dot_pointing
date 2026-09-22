@@ -90,12 +90,49 @@ Web Serialはsecure context（localhostまたはHTTPS）で使用します。
 終了はターミナルでCtrl+Cです。
 
 1. USBでRedPointを接続し、Serial Monitorなど他のポート利用アプリを閉じる。
-2. **Connect**を押し、ブラウザのポート選択画面でRedPointを選ぶ。このユーザー操作でUSB deviceへのpermissionを付与する。
+2. 初回は**Connect**を押し、ブラウザのポート選択画面でRedPointを選ぶ。このユーザー操作でUSB deviceへのpermissionを付与する。
 3. GETの応答後、**Connected**となり、設定controlが有効になる。
 4. sliderで感度、checkboxで反転を変更する。操作値と「デバイス確認値」は別表示。
 5. 永続化するには**Save**を押す。未送信SETの反映後、SAVEの成功応答で**Saved**になる。
 6. **Reset to defaults**はRAMのみdefaultへ戻す。defaultも保存する場合は続けて**Save**を押す。
 7. 終了時は**Disconnect**を押す。
+
+### 許可済みRedPointへの自動接続
+
+2回目以降はpage load時に`navigator.serial.getPorts()`で、このoriginへ許可済みのportだけを取得します。
+`getInfo().usbVendorId === 0x2E8A`で候補を絞り（PIDは固定しない）、GETの正常応答とconfigの型・範囲を検証します。
+許可取得の`requestPort()`はConnectクリック時だけで、page load時にはpickerを開きません。
+ブラウザのpermissionを削除した場合や別originでは、再度Connectから許可が必要です。
+localhostとGitHub Pagesの許可は別です。
+[Web Serialの公式説明](https://developer.chrome.com/docs/capabilities/serial)も参照してください。
+
+- 1候補: open → GET同期・本人確認 → 接続を維持。不要なclose／再openはしません。
+- 複数候補: 1台ずつopen → GET → close。RedPointが1台ならそのportを再openしてGET同期します。
+  0台ならDisconnected、2台以上なら自動選択せずConnectでの手動選択を案内します。
+- 初回GETのtimeoutは通常接続／1候補で2秒、複数候補のprobeで各1.2秒です。
+  初回検証失敗ではportを閉じ、Connectから再試行できます。探索中はConnectを無効化します。
+- GET成功後にのみ既存のPING capability probeとheartbeatを開始します。
+  旧firmwareのUNKNOWN_COMMANDではheartbeatだけを無効化し、設定機能は継続します。
+- USBのconnect eventでも、sessionがなく接続・探索・切断中でなければ許可済みportを再検出します。
+  **手動Disconnect後は同じpage session内で自動再接続しません**。手動Connectは使用でき、reload後は再び自動検出します。
+
+手動pickerはVID情報がないportも選べるよう従来どおり表示しますが、GETによる本人確認は必須です。
+探索失敗はページ全体のfatal errorにはしません。probe後のclose失敗時は次候補を開かず中止します。
+reader／writer lockを解放してからcloseし、再接続できない場合はUSBを挿し直してください。
+探索はSerialのGETだけを使用し、network request／backend／CDN／device情報の永続化を追加しません。
+
+制限: GET protocolが同一の別firmwareは識別できません。ブラウザ・OSによるport open／close時間はGET timeoutに含まれません。
+起動途中やport占有中は検出に失敗することがあります。切断処理中のUSB connect eventは処理を重ねず無視するため、
+素早い抜き差しで復帰しなければConnectを使ってください。
+
+GitHub Pagesでの実機確認（変更の公開後）:
+
+1. HTTPSのPages URLを開き、初回はpickerが自動表示されず、Connectで許可・接続できることを確認。
+2. reloadし、pickerなしでConnectedとなり、GETの設定値と通常のSET／RESET／SAVE／shortcutが使えることを確認。
+3. 手動Disconnect後は抜き差ししても再接続せず、Connectまたはreloadで接続できることを確認。
+4. 手動Disconnectしていない状態でUSBを抜き差しし、自動復帰とheartbeat再開を確認。
+5. 許可済みRedPointを2台接続し、自動選択されず、Connectで選べることを確認。
+6. permission削除後はConnectが再び必要なこと、Serial Monitor使用中は失敗後も手動再試行できることを確認。
 
 感度の範囲は0～10、sliderの刻みは0.01です。0はそのモードのpointer移動を停止します。
 Middle sensitivityは通常感度と乗算せず、logical Mouse Middle押下中に直接選択される倍率です。
@@ -167,7 +204,7 @@ GET / SET / RESET / SAVEの形式を維持し、configへleftAction / middleActi
 - 120msのdebounceと項目ごとの最新値への集約を行い、要求は必ず1つずつ送る。
 - RESETは未送信変更を破棄し、送信中SETの応答を待ってから実行する。
 - SAVEは未送信SETをすべて反映してから送る。SET失敗時は保留SAVEも中止し、保存を誤認させない。
-- 2秒のtimeout時は、適用済みか不明なので未送信変更を破棄し、改行＋GETで再同期する。
+- 接続済みsessionの2秒のtimeout時は、適用済みか不明なので未送信変更を破棄し、改行＋GETで再同期する。
   遅れて届くSET/RESET/SAVE応答やエラーは再同期GETの応答に使わない。
   GETだけでは保存成功を判定できないため保存状態は未確認とし、必要ならSaveを再実行する。
   再同期にも失敗した場合は切断し、再接続を案内する。

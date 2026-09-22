@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, mount } = require("../configurator/app.js");
+const { parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
 
 const defaults = () => ({ pointerSensitivity: 1, middleSensitivity: 0.4, invertX: false, invertY: false });
 const actionDefaults = () => ({ ...defaults(), leftAction: "mouse:left", middleAction: "mouse:middle", rightAction: "mouse:right" });
@@ -76,12 +76,21 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
   let controller;
   const port = {
     config: savedConfig ? { ...savedConfig } : withActions ? actionDefaults() : defaults(), commands: [], allCommands: [], pingSupported: false, writes: [], held: [], hold: false, rejectNext: false,
-    opened: false, closed: false,
+    opened: false, closed: false, openCalls: 0, closeCalls: 0,
     readable: new ReadableStream({ start(c) { controller = c; } }),
-    async open(options) { port.opened = true; port.options = options; },
+    async open(options) {
+      if (port.openFailure) throw new Error("port busy");
+      if (port.closed) {
+        port.readable = new ReadableStream({ start(c) { controller = c; } });
+        port.writable = createWritable();
+      }
+      port.openCalls++; port.opened = true; port.closed = false; port.options = options;
+    },
     async close() {
       assert.equal(port.readable.locked, false);
       assert.equal(port.writable.locked, false);
+      port.closeCalls++;
+      if (port.closeFailure) throw new Error("close failed");
       port.closed = true;
     },
     getInfo() { return { usbVendorId: 0x2e8a, usbProductId: 10 }; },
@@ -89,7 +98,7 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
     release() { for (const reply of port.held.splice(0)) port.emit(reply); },
     unplug() { controller.error(new Error("USB removed")); }
   };
-  port.writable = new WritableStream({
+  const createWritable = () => new WritableStream({
     write(bytes) {
       const text = new TextDecoder().decode(bytes);
       port.writes.push(text);
@@ -104,6 +113,11 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
         }
         port.commands.push(line);
         const [command, key, value] = line.split(" ");
+        if (command === "GET" && port.getReply !== undefined) {
+          const replies = typeof port.getReply === "function" ? port.getReply() : port.getReply;
+          for (const text of Array.isArray(replies) ? replies : [replies]) if (text) port.emit(text);
+          continue;
+        }
         let reply;
         if (port.rejectNext) {
           port.rejectNext = false;
@@ -119,6 +133,7 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
       }
     }
   });
+  port.writable = createWritable();
   return port;
 }
 
@@ -649,4 +664,189 @@ test("heartbeat timeout GET resync restores usable UI and ignores late PING", as
   ui.el("save").fire("click");
   await until(() => ui.el("save-status").textContent === "Saved");
   assert.equal(port.config.invertY, true);
+});
+
+
+function autoUI(ports, { manual = fakePort(), secure = true, getPorts } = {}) {
+  const doc = fakeDocument();
+  const serial = { ...eventTarget(), ports, requests: 0, discoveries: 0,
+    async getPorts() { serial.discoveries++; return getPorts ? getPorts() : serial.ports; },
+    async requestPort() { serial.requests++; return manual; }
+  };
+  mount(doc, serial, secure);
+  const el = id => doc.getElementById(id);
+  return { serial, el, async ready(state = "Disconnected", timeout = 3000) {
+    await until(() => el("connection-status").textContent === state, timeout);
+  }, async close() { el("disconnect").fire("click"); await this.ready(); } };
+}
+
+function assertReleased(port) {
+  assert.equal(port.readable.locked, false);
+  assert.equal(port.writable.locked, false);
+}
+
+test("authorized filtering requires VID only, handles absent info and deduplicates", () => {
+  const a = fakePort(), b = fakePort(), c = fakePort(), d = fakePort();
+  b.getInfo = () => ({ usbVendorId: 0x2e8a, usbProductId: 65535 });
+  c.getInfo = () => ({}); d.getInfo = () => { throw new Error("gone"); };
+  assert.deepEqual(authorizedCandidates([a, b, c, d, a]), [a, b]);
+});
+
+test("no authorized ports / wrong VID / absent VID never open or show picker", async () => {
+  for (const info of [null, { usbVendorId: 1234 }, {}]) {
+    const port = fakePort(); port.getInfo = () => info;
+    const ui = autoUI(info === null ? [] : [port]);
+    assert.equal(ui.el("connect").disabled, true);
+    await ui.ready();
+    assert.equal(port.openCalls, 0); assert.equal(ui.serial.requests, 0);
+    assert.equal(ui.el("connect").disabled, false);
+    assert.match(ui.el("message").textContent, /アクセスを許可/);
+  }
+});
+
+test("single authorized port uses one open/GET then heartbeat, supports legacy PING", async t => {
+  const port = fakePort(null, () => {}, true);
+  port.getReply = ['@DEBUG boot\r\n@CONFIG invalid\n', response("GET", actionDefaults()).slice(0, 20), response("GET", actionDefaults()).slice(20)];
+  const ui = autoUI([port]); t.after(() => ui.close());
+  await ui.ready("Connected");
+  assert.equal(port.openCalls, 1); assert.equal(port.closeCalls, 0);
+  assert.deepEqual(port.allCommands, ["GET", "PING"]);
+  assert.equal(ui.serial.requests, 0);
+  assert.equal(ui.el("button-controls").disabled, false);
+  ui.el("save").fire("click"); await until(() => ui.el("save-status").textContent === "Saved");
+});
+
+test("single authorized timeout and malformed-only response close and restore manual Connect", async () => {
+  for (const reply of ['', '@DEBUG hi\n@CONFIG {oops}\n' + response("GET", { invertX: true })]) {
+    const port = fakePort(); port.getReply = reply;
+    const ui = autoUI([port]); await ui.ready();
+    assert.equal(port.closed, true); assertReleased(port);
+    assert.deepEqual(port.allCommands, ["GET"]);
+    assert.equal(ui.el("connect").disabled, false);
+    assert.equal(ui.el("message").dataset.kind, "info");
+  }
+});
+
+test("multiple candidates probe serially, continue after timeout/open failure, reconnect unique identity", async t => {
+  const failed = fakePort(); failed.openFailure = true;
+  const other = fakePort(); other.getReply = '';
+  const red = fakePort();
+  let opened = 0;
+  for (const port of [other, red]) {
+    const open = port.open, close = port.close;
+    port.open = async options => { assert.equal(opened, 0); await open(options); opened++; };
+    port.close = async () => { await close(); opened--; };
+  }
+  const ui = autoUI([failed, other, red]); t.after(() => ui.close());
+  await ui.ready("Connected");
+  assertReleased(other); assert.equal(other.closed, true);
+  assert.equal(red.openCalls, 2); assert.equal(red.closeCalls, 1);
+  assert.deepEqual(red.allCommands, ["GET", "GET", "PING"]);
+  assert.equal(opened, 1);
+});
+
+test("multiple RedPoints close every probe, report ambiguity and allow manual choice", async t => {
+  const a = fakePort(), b = fakePort();
+  const ui = autoUI([a, b], { manual: b }); t.after(() => ui.close());
+  await ui.ready();
+  assert.match(ui.el("message").textContent, /複数のRedPoint/);
+  for (const port of [a, b]) { assertReleased(port); assert.equal(port.closed, true); assert.deepEqual(port.allCommands, ["GET"]); }
+  ui.el("connect").fire("click"); await ui.ready("Connected");
+  assert.equal(ui.serial.requests, 1); assert.equal(b.openCalls, 2);
+});
+
+test("multiple candidates with no identity remain disconnected", async () => {
+  const ports = [fakePort(), fakePort()];
+  for (const p of ports) p.openFailure = true;
+  const ui = autoUI(ports); await ui.ready();
+  assert.match(ui.el("message").textContent, /確認できません/);
+  assert.equal(ui.serial.requests, 0);
+});
+
+test("manual non-RedPoint closes without retry; unknown VID remains usable manually", async t => {
+  const invalid = fakePort(); invalid.getReply = '';
+  const ui = autoUI([], { manual: invalid }); await ui.ready();
+  ui.el("connect").fire("click"); await ui.ready();
+  assert.equal(invalid.closed, true); assertReleased(invalid);
+  assert.deepEqual(invalid.allCommands, ["GET"]);
+  assert.match(ui.el("message").textContent, /RedPointとして接続できません/);
+  const valid = fakePort(); valid.getInfo = () => ({});
+  ui.serial.requestPort = async () => valid;
+  ui.el("connect").fire("click"); t.after(() => ui.close());
+  await ui.ready("Connected"); assert.equal(valid.openCalls, 1);
+});
+
+test("manual Disconnect suppresses USB auto reconnect until a fresh mount; manual Connect still works", async t => {
+  const port = fakePort(); const ui = autoUI([port], { manual: port });
+  await ui.ready("Connected"); await ui.close();
+  ui.serial.fire("connect", { target: port }); await sleep(20);
+  assert.equal(ui.serial.discoveries, 1); assert.equal(port.openCalls, 1);
+  ui.el("connect").fire("click"); await ui.ready("Connected"); await ui.close();
+  const fresh = autoUI([port]); t.after(() => fresh.close());
+  await fresh.ready("Connected"); assert.equal(port.openCalls, 3);
+});
+
+test("USB connect events auto discover only while idle; manual clicks cannot race getPorts", async t => {
+  let resolvePorts;
+  const port = fakePort();
+  const ui = autoUI([], { getPorts: () => new Promise(resolve => { resolvePorts = resolve; }) });
+  t.after(() => ui.close());
+  ui.el("connect").fire("click"); ui.serial.fire("connect", { target: port });
+  assert.equal(ui.serial.requests, 0); assert.equal(ui.serial.discoveries, 1);
+  resolvePorts([]); await ui.ready();
+  ui.serial.getPorts = async () => [port];
+  ui.serial.fire("connect", { target: port }); await ui.ready("Connected");
+  ui.serial.fire("connect", { target: port }); assert.equal(port.openCalls, 1);
+});
+
+test("USB disconnect during probe advances to next candidate, stale events cannot kill new session", async t => {
+  const old = fakePort(); old.hold = true;
+  const next = fakePort();
+  const ui = autoUI([old, next]); t.after(() => ui.close());
+  await until(() => old.commands.includes("GET"));
+  ui.serial.fire("disconnect", { target: old });
+  await ui.ready("Connected");
+  assert.equal(old.closed, true); assertReleased(old);
+  ui.serial.fire("disconnect", { target: old });
+  await sleep(10); assert.equal(ui.el("connection-status").textContent, "Connected");
+  assert.equal(next.closed, false);
+});
+
+test("stream loss during probe closes candidate; close failure stops before next open", async () => {
+  const a = fakePort(); a.hold = true;
+  const b = fakePort();
+  const ui = autoUI([a, b]); await until(() => a.commands.length === 1);
+  a.unplug(); await ui.ready("Connected"); await ui.close(); assertReleased(a);
+  const bad = fakePort(); bad.closeFailure = true;
+  const untouched = fakePort(); const failed = autoUI([bad, untouched]); await failed.ready();
+  assert.equal(untouched.openCalls, 0); assertReleased(bad);
+  assert.match(failed.el("message").textContent, /close failed/);
+});
+
+test("Disconnect during pending open waits for release and ignores stale GET/callback", async () => {
+  const port = fakePort(); const open = port.open; let releaseOpen;
+  port.open = async options => { await new Promise(resolve => { releaseOpen = resolve; }); await open(options); };
+  const ui = autoUI([port]); await until(() => releaseOpen);
+  ui.el("disconnect").fire("click");
+  ui.serial.fire("connect", { target: port }); ui.el("connect").fire("click");
+  assert.equal(ui.serial.requests, 0);
+  releaseOpen(); await ui.ready();
+  assert.equal(port.closed, true); assertReleased(port);
+  assert.deepEqual(port.allCommands, []);
+});
+
+test("late GET and closed connection callback cannot revive timed-out identity", async () => {
+  const port = fakePort(); port.hold = true; let losses = 0;
+  const active = createDeviceConnection(port, () => losses++, 20);
+  await assert.rejects(active.openAndSync(), /TIMEOUT/); await active.close();
+  active.protocol.accept(response()); active.fail(new Error("late"));
+  assert.equal(losses, 0); assertReleased(port);
+});
+
+test("getPorts rejection, unsupported API and insecure contexts leave manual guidance", async () => {
+  const ui = autoUI([], { getPorts: () => { throw new Error("permission unavailable"); } });
+  await ui.ready(); assert.equal(ui.el("connect").disabled, false);
+  const insecure = autoUI([], { secure: false });
+  assert.equal(insecure.serial.discoveries, 0); assert.equal(insecure.el("connect").disabled, true);
+  assert.match(insecure.el("message").textContent, /HTTPS/);
 });
