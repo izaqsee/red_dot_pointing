@@ -1,10 +1,10 @@
-# RedPoint RevA Pico SDK — Milestone C.1
+# RedPoint RevA Pico SDK — Milestone C.2
 
 Independent RP2040 target: current TinyUSB CDC-NCM + CDC ACM Serial + two HID
 interfaces. Milestones A/B/C are hardware-verified and their USB/network/HTTP/frontend
 architecture is frozen. Milestone C adds GPIO12/13 TrackPoint PS/2, GPIO3/2/4
 physical buttons, TinyUSB input reports, persistent config and GPIO23 WS2812.
-See [MILESTONE_C1.md](MILESTONE_C1.md) for native Middle-held Wheel/Pan scrolling and current validation. See [MILESTONE_C.md](MILESTONE_C.md) for the historical C layout, intentional differences, tests,
+See [MILESTONE_C2.md](MILESTONE_C2.md) for separate Pointer/Wheel settings, v3 migration and current validation. C.1 native scrolling is user-confirmed on Windows/iPad. See [MILESTONE_C.md](MILESTONE_C.md) for the historical C layout, intentional differences, tests,
 hardware validation and the complete change list. [MILESTONE_B.md](MILESTONE_B.md)
 is the historical B report.
 
@@ -112,7 +112,7 @@ PowerShell, from the RedPoint repo root, using the installed tool paths:
   -DCMAKE_MAKE_PROGRAM=C:/Users/intel/AppData/Local/Microsoft/WinGet/Links/ninja.exe `
   -DCMAKE_BUILD_TYPE=MinSizeRel
 & 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c.py
+& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c2.py
 ```
 
 The test uses only Python's standard library; another Python 3 interpreter is fine.
@@ -124,9 +124,9 @@ that the UF2 is RP2040 format with a payload matching the generated binary.
 Build outputs: `build/redpoint_reva.{elf,elf.map,bin,hex,uf2}`.
 These commands do not upload or access a USB device.
 
-Milestone C.1 build: Flash **137,020 B / 16,380 KiB available (0.82%)**,
-RAM **41,824 B / 256 KiB (15.86%)**, plus **4,096 B** Scratch Y stack reservation.
-UF2 **274,432 B**. Allocation is a linker measurement, not runtime high-water use.
+Milestone C.2 build: Flash **139,732 B / 16,380 KiB available (0.83%)**,
+RAM **41,840 B / 256 KiB (15.96%)**, plus **4,096 B** Scratch Y stack reservation.
+UF2 **279,552 B**. Allocation is a linker measurement, not runtime high-water use.
 The config sector at XIP **0x10FFF000–0x10FFFFFF** is not included in ELF/UF2.
 
 ## Hardware acceptance and frozen A/B baseline
@@ -155,7 +155,7 @@ Check `ipconfig` for host 169.254/16 and no gateway provided by this device; ope
 stability, HID boot/report protocol, and iPad link-local access with Wi-Fi retained.
 USB descriptor analysis and a successful build do not establish hardware success.
 
-Milestone C physical input, Flash persistence and WS2812 are user-confirmed. C.1 native scrolling needs on-device validation.
+Milestone C physical input, Flash persistence and WS2812 are user-confirmed. C.1 native scrolling is user-confirmed; C.2 settings and default vertical direction need on-device validation.
 Power draw/suspend compliance,
 runtime stack/heap high-water marks, long-running network throughput, unique MACs
 and Windows compatibility across OS versions remain unverified.

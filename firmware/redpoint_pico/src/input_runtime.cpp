@@ -50,17 +50,20 @@ void updateButtons() {
 int16_t clamp(int16_t v) { return v > 127 ? 127 : v < -127 ? -127 : v; }
 void move(uint8_t xb, uint8_t yb) {
   int16_t x = clamp((int8_t)yb), y = clamp((int8_t)xb);
-  if (config.invertX) x = -x;
-  if (config.invertY) y = -y;
   int16_t outX, outY;
   if (scrollMode) {
+    // Pan polarity was hardware-confirmed; Wheel needs the opposite base sign.
+    if (config.wheelInvertX) x = -x;
+    if (!config.wheelInvertY) y = -y;
     pointerAccX = pointerAccY = 0;
-    scrollAccX += x * config.middleSensitivity; scrollAccY += y * config.middleSensitivity;
+    scrollAccX += x * config.wheelSensitivityX; scrollAccY += y * config.wheelSensitivityY;
     outX = (int16_t)scrollAccX; outY = (int16_t)scrollAccY;
     // Match pointer saturation: retain fractions, discard excess whole ticks.
     scrollAccX -= outX; scrollAccY -= outY;
     redpoint_hid_scroll((int8_t)clamp(outY), (int8_t)clamp(outX));
   } else {
+    if (config.pointerInvertX) x = -x;
+    if (config.pointerInvertY) y = -y;
     pointerAccX += x * config.pointerSensitivity; pointerAccY += y * config.pointerSensitivity;
     outX = (int16_t)pointerAccX; outY = (int16_t)pointerAccY;
     pointerAccX -= outX; pointerAccY -= outY;

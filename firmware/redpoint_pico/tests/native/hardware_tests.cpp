@@ -27,7 +27,7 @@ static void repairCRC(uint8_t *data, unsigned length) {
 void runHardwareTests(void) {
   testReset(); testPacket(3, -2);
   assert((mouseReports.back() == std::array<int,5>{0,-2,3,0,0}));
-  command("SET invertX 1"); command("SET invertY 1"); testPacket(3, -2);
+  command("SET pointerInvertX 1"); command("SET pointerInvertY 1"); testPacket(3, -2);
   assert((mouseReports.back() == std::array<int,5>{0,2,-3,0,0}));
   testReset(); command("SET pointerSensitivity 0.5");
   testPacket(1, 1); assert(mouseReports.back()[1] == 0);
@@ -72,7 +72,7 @@ void runHardwareTests(void) {
   button(0,true); button(2,true); button(0,false);
   assert(mouseActionHeld(MouseButtonCode::Middle));
   command("SET middleSensitivity 0.5"); command("SET pointerSensitivity 2");
-  testPacket(2,2); assert((mouseReports.back() == std::array<int,5>{0,0,0,1,1})); // logical Middle scroll
+  testPacket(2,2); assert((mouseReports.back() == std::array<int,5>{0,0,0,-1,1})); // logical Middle scroll
   testPacket(1,1); assert(mouseReports.back()[4] == 0);
   command("SET middleSensitivity 0.5"); testPacket(1,1); assert(mouseReports.back()[4] == 0);
   button(2,false); testPacket(2,2); assert(mouseReports.back()[1] == 4);
@@ -111,18 +111,31 @@ void runHardwareTests(void) {
   auto reports = mouseReports.size();
   testPacket(1,1); assert(mouseReports.size() == reports+1 && mouseReports.back()[1] == 1); // fraction preserved by Flash resync
   config = DEFAULT_CONFIG; assert(loadDeviceConfig(config) && equalDeviceConfig(config, saved));
-  command("SET invertX 1"); failCommit = true; command("SAVE");
+  command("SET pointerInvertX 1"); failCommit = true; command("SAVE");
   assert(resyncs == 2 && configUnsaved());
   failCommit = false; corruptCommit = true; command("SAVE"); assert(resyncs == 3 && configUnsaved());
   corruptCommit = false; command("SAVE"); assert(!configUnsaved());
   DeviceConfig restored; flashImage[12] ^= 1; assert(!loadDeviceConfig(restored));
   assert(equalDeviceConfig(restored, DEFAULT_CONFIG));
-  // v1 fixture: same codec/CRC, no boot write; next explicit SAVE upgrades to v2.
+  // v2 migration keeps actions/pointer, initializes independent wheel inversions.
+  auto old = saved; old.pointerInvertX = true; old.wheelInvertX = true;
+  old.wheelSensitivityX = 0.25f; old.wheelSensitivityY = 1.5f;
+  old.leftAction = {ActionType::KeyboardShortcut, 0x17, 0x03};
+  encodeConfigRecord(old, flashImage); flashImage[4] = 2; flashImage[6] = 36;
+  repairCRC(flashImage, 36); unsigned beforeV2Writes = writes;
+  assert(loadDeviceConfig(restored));
+  assert(restored.pointerInvertX && !restored.wheelInvertX && !restored.wheelInvertY);
+  assert(restored.wheelSensitivityX == 0.25f && restored.wheelSensitivityY == 0.25f);
+  assert(restored.leftAction.code == 0x17 && writes == beforeV2Writes && flashImage[4] == 2);
+  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 3);
+  assert(takeConfigFlashWrite());
+  DeviceConfig reboot; assert(loadDeviceConfig(reboot) && equalDeviceConfig(restored, reboot));
+  // v1 fixture: same codec/CRC, no boot write; next explicit SAVE upgrades to v3.
   encodeConfigRecord(saved, flashImage); flashImage[4] = 1; flashImage[6] = 24;
   repairCRC(flashImage, 24); unsigned beforeWrites = writes;
   assert(loadDeviceConfig(restored)); assert(restored.pointerSensitivity == saved.pointerSensitivity);
   assert(restored.leftAction.code == LEFT_ACTION.code && writes == beforeWrites);
-  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 2);
+  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 3);
   assert(takeConfigFlashWrite());
   restored.pointerSensitivity = std::numeric_limits<float>::quiet_NaN();
   assert(saveDeviceConfig(restored) == ConfigSaveResult::InvalidConfig);
@@ -130,7 +143,7 @@ void runHardwareTests(void) {
   flashAvailable = false; assert(!loadDeviceConfig(restored));
   assert(saveDeviceConfig(DEFAULT_CONFIG) == ConfigSaveResult::StorageError);
   assert(!takeConfigFlashWrite());
-  std::cout << "PASS: v2/CRC/v1 migration/explicit SAVE/readback/reboot/no-op/failure resync and baseline semantics\n";
+  std::cout << "PASS: v3/CRC/v1+v2 migration/explicit SAVE/readback/reboot/no-op/failure resync and baseline semantics\n";
 
   testReset(); statusLedBegin(); assert(ledColor == 0xffffff);
   statusLedEndBoot(); assert(ledColor == 0x0000ff);

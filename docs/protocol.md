@@ -38,9 +38,9 @@ chunkの境界は行の境界とは限らず、応答の前後にdebug行が入�
 | キー | default | SETで受け付ける値 | 意味 |
 | --- | --- | --- | --- |
 | pointerSensitivity | 1.00 | 0～10（両端を含む） | logical Mouse Middleがheldでないときの倍率 |
-| middleSensitivity | 0.40 | 0～10（両端を含む） | logical Mouse Middleがheldのときの倍率 |
-| invertX | false | `0` / `1` | USB X方向の反転 |
-| invertY | false | `0` / `1` | USB Y方向の反転 |
+| pointerInvertX / pointerInvertY | false | `0` / `1` | Pointerの各軸だけを反転 |
+| wheelSensitivityX / wheelSensitivityY | 0.40 | 0～10（両端を含む） | Pan / Wheelそれぞれの感度。0でその軸を無効化 |
+| wheelInvertX / wheelInvertY | false | `0` / `1` | Wheelの各軸だけを反転 |
 | leftAction | `mouse:left` | 下記Action文字列 | Left物理ボタンの割当 |
 | middleAction | `mouse:middle` | 下記Action文字列 | Middle物理ボタンの割当 |
 | rightAction | `mouse:right` | 下記Action文字列 | Right物理ボタンの割当 |
@@ -49,13 +49,19 @@ chunkの境界は行の境界とは限らず、応答の前後にdebug行が入�
 符号、指数表記、NaN、Infinity、16進表記、単位付き文字列は無効。
 floatで保持し、GETでは小数点以下6桁を返すため丸めがある。
 boolの応答はJSON booleanだが、SETの入力は`0`/`1`に限定する。
-0はそのモードのpointer移動を停止するが、ボタンは動作する。
+Pico SDK C.2ではlogical MiddleがheldでないときPointer、heldのときWheelを選択する。
+logical X=PS/2 Y、logical Y=PS/2 Xと±127 clampは従来どおり。
+PointerだけにpointerInvertX/YとpointerSensitivityを適用する。
+Wheelはlogical X→Pan、logical Y→Wheelへ独立感度・Invertを適用し、Mouse X/YとMiddle pressを送らない。
+Wheelのbase polarityはXを維持、Yだけ反転。Invert OFFでstick方向へviewが動く基準とする。
+Pointer/Wheelは別fraction stateを持ち、mode切替時（packetがない場合も）にclearする。
 
-Middle時はmiddleSensitivityを直接選択し、pointerSensitivityとは乗算しない。
-baselineのUSB軸変換（X=PS/2 Y、Y=PS/2 X）と±127 clampの後、
-invertX/Yと選択された感度を適用する。小数部はモードごとに蓄積する。
-反対のモードでpacketを処理したとき、そのモードを離れた残量を消す。
-これはbaselineのMiddle残量の消去タイミングを維持するためである。
+旧Pages互換のSET alias: `middleSensitivity`はWheel両軸を同じ値へ設定し、`invertX/Y`はPointerのみ更新。
+GET/SET/RESET/SAVEの応答にも旧名を追加し、middleSensitivityはWheel Yの代表値を返す。
+内部state/保存形式に旧fieldは持たない。旧UIでは独立Wheel X/YやWheel Invertを操作できない。
+新UIはC.2 schemaを要求するため、C.1以前のfirmwareと使う場合は旧Pagesを使用する。
+Arduino sketchは歴史的なMiddle-held X/Y経路の参照実装であり、native WheelはPico SDK targetの機能。
+
 出力は再度±127に飽和させる。飽和した整数分は捨て、小数部のみ持ち越す。
 SET/RESET成功時は全残量を消し、次のpacketから設定を適用する。
 同じ値のSETでも残量は消す。debounceとPS/2受信設定は変更しない。
@@ -103,7 +109,7 @@ USB初期化後にも押されている起動時のボタンは、その時点�
 
 ```text
 GET
-@CONFIG {"ok":true,"command":"GET","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.400000,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right"}}
+@CONFIG {"ok":true,"command":"GET","config":{"pointerSensitivity":1.0,"middleSensitivity":0.4,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right","wheelSensitivityX":0.4,"wheelSensitivityY":0.4,"pointerInvertX":false,"pointerInvertY":false,"wheelInvertX":false,"wheelInvertY":false}}
 ```
 
 ### SET <key> <value>
@@ -113,7 +119,7 @@ GET
 
 ```text
 SET middleSensitivity 0.25
-@CONFIG {"ok":true,"command":"SET","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right"}}
+@CONFIG {"ok":true,"command":"SET","config":{"pointerSensitivity":1.0,"middleSensitivity":0.25,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right","wheelSensitivityX":0.25,"wheelSensitivityY":0.25,"pointerInvertX":false,"pointerInvertY":false,"wheelInvertX":false,"wheelInvertY":false}}
 SET pointerSensitivity 1.10
 SET invertX 1
 SET invertY 0
@@ -148,7 +154,7 @@ Flash上のレコードと同一の場合はwrite/eraseを省略して成功を�
 
 ```text
 SAVE
-@CONFIG {"ok":true,"command":"SAVE","config":{"pointerSensitivity":1.000000,"middleSensitivity":0.250000,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right"}}
+@CONFIG {"ok":true,"command":"SAVE","config":{"pointerSensitivity":1.0,"middleSensitivity":0.25,"invertX":false,"invertY":false,"leftAction":"mouse:left","middleAction":"mouse:middle","rightAction":"mouse:right","wheelSensitivityX":0.25,"wheelSensitivityY":0.25,"pointerInvertX":false,"pointerInvertY":false,"wheelInvertX":false,"wheelInvertY":false}}
 ```
 
 保存対象の検証失敗と、保存／照合の失敗を区別する。
@@ -170,37 +176,44 @@ Configuratorは未送信SETを反映してからSAVEし、その間は設定操�
 
 ## Flash保存形式と起動
 
-Philhower RP2040 core 6.1.0標準EEPROM emulationを使用する。
-coreが予約するFlash末尾の4 KiB sector内、offset 0に次の36-byte v2レコードを保存する。
+Pico SDK版は16 MiB Flash末尾の既存sector `0x10FFF000–0x10FFFFFF`、offset 0へ44-byte v3を保存する。
+sector配置、erase/program、readback照合、explicit SAVE方針はC.1と同じ。
+Arduino版はPhilhower RP2040 core 6.1.0標準EEPROM emulationで同じrecord codecを使用する。
 filesystemは不要。多byte値はlittle endian、floatはIEEE-754 binary32。
 C++ structのpaddingやboolのメモリ表現には依存しない。
 
 | Offset | Bytes | 内容 |
 | --- | --- | --- |
 | 0 | 4 | magic: ASCII `RPNT`（uint32 0x544E5052） |
-| 4 | 2 | format version: 2 |
-| 6 | 2 | record length: 36 |
+| 4 | 2 | format version: 3 |
+| 6 | 2 | record length: 44 |
 | 8 | 4 | pointerSensitivity |
-| 12 | 4 | middleSensitivity |
-| 16 | 1 | invertX: 0 / 1 |
-| 17 | 1 | invertY: 0 / 1 |
+| 12 | 4 | wheelSensitivityX |
+| 16 | 1 | pointerInvertX: 0 / 1 |
+| 17 | 1 | pointerInvertY: 0 / 1 |
 | 18 | 2 | reserved: 0 |
 | 20 / 24 / 28 | 各1 | Left / Middle / Right action type |
 | 21 / 25 / 29 | 各1 | action code |
 | 22 / 26 / 30 | 各1 | modifiers |
 | 23 / 27 / 31 | 各1 | reserved: 0 |
-| 32 | 4 | bytes 0～31のCRC-32/ISO-HDLC |
+| 32 | 4 | wheelSensitivityY |
+| 36 / 37 | 各1 | wheelInvertX / wheelInvertY: 0 / 1 |
+| 38 | 2 | reserved: 0 |
+| 40 | 4 | bytes 0～39のCRC-32/ISO-HDLC |
 
 CRCはreflected polynomial 0xEDB88320、初期値0xFFFFFFFF、最終XOR 0xFFFFFFFF。
 拡張時はformat versionとrecord lengthを更新し、必要に応じて移行処理を追加する。
-v1 (24 bytes)も読み込む。v1はoffset 0～19が同じ構成で、version=1、length=24、
-offset 20～23にbytes 0～19のCRCを持つ。CRC・値・reservedを検証した有効なv1は
-既存4項目を保持し、defaultの3 Actionを追加してRAM上だけで移行する。
-起動時には書き込まず、次の明示SAVEでv2を保存する。未知versionはdefaultへfallbackする。
+v1 (24 bytes)とv2 (36 bytes)も読み込む。旧offset 8/12はpointerSensitivity/middleSensitivity、
+16/17はinvertX/Y、18/19はreserved。v1のCRCはoffset 20、v2はoffset 32。
+v2のactionsはoffset 20～31でv3と同じ。v1はdefault actionsを追加する。
+旧Pointer値はそのまま新Pointerへ、旧middleSensitivityはWheel X/Yの両方へ移行する。
+Wheel Invertは両方falseで初期化し、旧Pointer Invertを引き継がない。
+CRC・値・reservedを検証してRAM上だけで移行する。次の明示SAVEでv3へ書く。
+未知versionや不正recordは全defaultへfallbackする。
 
 setupのPS/2割り込み・HID初期化前に1回loadする。
 magic、version、長さ、CRC、reserved、bool表現、感度の有限性・0～10の範囲、Actionのtype/code/modifiersをすべて検証する。
-未保存（消去済み領域を含む）またはどれか不正なら7項目すべてdefaultに戻す。
+未保存（消去済み領域を含む）またはどれか不正なら全設定をdefaultに戻す。
 bootやfallback、SET、RESETではFlashを書かず、壊れたデータの自動修復もしない。
 
 EEPROM.beginはcore内部で256-byteのRAMバッファを起動時に確保する。
@@ -281,7 +294,7 @@ PINGをqueueに蓄積しません。すでに送信済みのPINGは応答を受�
 応答直後に待機中のユーザー操作を優先します。Disconnect、入力stream終了、USB抜去でtimerを停止します。
 command名が一致しない成功応答は待機要求を完了させません。
 
-LEDはfirmware側の状態から決定し、protocolのconfig形式・Flash format v2は変更しません。
+LEDはfirmware側の状態から決定し、C.2でもLED状態の意味と優先順位は変更しません。
 全`@CONFIG` error応答でREDを2秒保持し、新しいエラーで延長します。
 SAVE直前にPURPLEを送信し、完了後もLEDだけ開始時刻から最低150 ms保持します。
 ErrorはPURPLEより優先されます。Flash／protocol／HIDを表示時間のために待たせません。

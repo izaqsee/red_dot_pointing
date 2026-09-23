@@ -148,8 +148,22 @@ int main(int argc, char **argv) {
   assert(ping == "@CONFIG {\"ok\":true,\"command\":\"PING\"}\r\n");
   std::ofstream(std::string(argv[2]) + ".ping", std::ios::binary) << ping;
   assert(bodyOf(post("PING")) == serial("PING\n"));
-  assert(bodyOf(post("SET invertX 1")).find("\"ok\":true") != std::string::npos);
-  assert(config.invertX && configUnsaved());
+  for (const char *setting : {"wheelSensitivityX 0.25", "wheelSensitivityY 1.5",
+       "wheelInvertX 1", "wheelInvertY 1", "pointerInvertY 1", "pointerSensitivity 2"}) {
+    const std::string command = std::string("SET ") + setting;
+    assert(bodyOf(post(command)).find("\"ok\":true") != std::string::npos);
+    assert(serial("GET\n") == bodyOf(post("GET")));
+    assert(serial(command + "\n") == bodyOf(post(command)));
+  }
+  assert(config.wheelSensitivityX == 0.25f && config.wheelSensitivityY == 1.5f);
+  assert(config.wheelInvertX && config.wheelInvertY && config.pointerInvertY);
+  assert(bodyOf(post("SAVE")).find("\"ok\":true") != std::string::npos);
+  const auto separated = config;
+  redpoint_config_init(); redpoint_config_end_boot();
+  assert(equalDeviceConfig(config, separated));
+  post("RESET"); redpoint_config_apply();
+  assert(bodyOf(post("SET pointerInvertX 1")).find("\"ok\":true") != std::string::npos);
+  assert(config.pointerInvertX && configUnsaved());
   redpoint_config_apply(); testPacket(2, 3); assert(mouseReports.back()[1] == -3);
   assert(serial("GET\n") == bodyOf(post("GET")));
   assert(serial("SET rightAction key:03:17\n").find("\"ok\":true") != std::string::npos);
@@ -165,7 +179,7 @@ int main(int argc, char **argv) {
   assert(bodyOf(post("SAVE")).find("\"ok\":true") != std::string::npos);
   assert(!configUnsaved()); redpoint_config_apply();
   redpoint_config_init(); redpoint_config_end_boot(); assert(equalDeviceConfig(beforeSave, config));
-  assert(bodyOf(post("SET invertY 9")).find("INVALID_VALUE") != std::string::npos);
+  assert(bodyOf(post("SET pointerInvertY 9")).find("INVALID_VALUE") != std::string::npos);
   assert(bodyOf(post("RESET")).find("\"ok\":true") != std::string::npos);
   assert(configUnsaved() && equalDeviceConfig(config, DEFAULT_CONFIG));
   assert(bodyOf(post("GET")) == initial);
@@ -180,10 +194,10 @@ int main(int argc, char **argv) {
   assert(request("GET /api/command HTTP/1.1\r\nHost: 169.254.7.1\r\n\r\n").find("405 Method Not Allowed") != std::string::npos);
   assert(bodyOf(post("GET")) == initial);
   assert(serial(std::string(96, 'X') + "\nGET\n").find("INVALID_LINE") != std::string::npos);
-  serialIn = "SET invertX "; redpoint_config_cdc_task();
+  serialIn = "SET pointerInvertX "; redpoint_config_cdc_task();
   serialConnected = false; redpoint_config_cdc_task(); serialConnected = true;
   assert(serial("GET\n") == initial);
-  serial("SET invertX 1\n"); redpoint_config_init(); redpoint_config_end_boot();
+  serial("SET pointerInvertX 1\n"); redpoint_config_init(); redpoint_config_end_boot();
   assert(equalDeviceConfig(config, beforeSave));
   std::cout << "PASS: malformed POST rejection, recovery, CDC partial writes/disconnect, HTTP/CDC physical effects and persisted reboot\n";
 }

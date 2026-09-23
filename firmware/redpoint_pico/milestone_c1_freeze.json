@@ -1,0 +1,26 @@
+{
+  "files": {
+    "firmware/redpoint_pico/src/hid_state.cpp": "982b2ed86f3528917853e585e72d2a9eda2b596171dab98b7e14e8a5f84765d0",
+    "firmware/redpoint_pico/src/hid.c": "bd74320637b8858fb2b1bde35e0e31316a4504bb09f714d95ad26cc2d789fd94",
+    "firmware/redpoint_pico/src/flash_backend.cpp": "9ecd6643cbf0ed66b366cd77dd333f6da9e5a0e553df94f17b2362b94dc3ce28",
+    "firmware/redpoint_pico/src/config_storage.cpp": "84750a19519f62aa05b1c42e5c555c36c9630d01c678269c2a7b8fe8a9a2bd5e",
+    "firmware/redpoint_pico/src/config_cdc.cpp": "4e16c9a920987d93e606a4f3edfd5aca337312b5a8a7250c9344c561e6835336",
+    "firmware/redpoint/button_action_state.cpp": "80206da108a6095abef21b6086dba53fec1414d194b830811211408b6b770a22",
+    "firmware/http_lwip/redpoint_httpd.cpp": "83d412ea19f252df714c9fb8aeb160b4bb42a1b2ccb71c0a4f90270db3ac570d",
+    "firmware/redpoint_pico/src/status_led.cpp": "2a53b6e9fabebe835e1f5dcf7143a3cc7eae465444c7a9a45aa2bac61375ad8e",
+    "firmware/redpoint_pico/src/main.c": "234523fe066f9959abe27139d8078a11d6133677bc0bc1acbe32e18f0c6a9cf7",
+    "firmware/redpoint_pico/src/config_platform.cpp": "0676c3e7444d0649ecf2ae9ab91200794379bf79a36096c1b22ed1491be4cdf5",
+    "firmware/redpoint/config_http.cpp": "83ab70532ced7ad194f64eeb7d757edcdd149ba679933eab8d1e71183bad4a56",
+    "firmware/redpoint_pico/src/lwipopts.h": "97d50f41f3f2a4847f307ae3c8c4512df67f05f119191df56ac81d92132f03b6"
+  },
+  "frontend": {
+    "parseLine": "91cd4fdd6012d51d2e3a65d05609bc09cb94b6b7ce98b8d8f27954503ff9adb7",
+    "createLineReader": "fa2ee88198057da3f0e64d8788408454df5237888b863fe7596a7d758e266066",
+    "createProtocol": "9258b13933ed08274474604963ae8aaac79c51bafe8e24545664cf81d7a6d553",
+    "createHeartbeat": "0844a8349556017950e46735750b7c69368a16b83320d1217b8beb285b3f64ad",
+    "createHttpTransport": "74c468d82cc38777ec25ad65c3444306360e6e33202108a903ce84437e3452f0",
+    "createHttpConnection": "bb2ab20f995666aba92d047d62e4491f688f97e2a3583d1f9119bb2f31d026c0",
+    "createSerialTransport": "3a37bcfb90c64d27ef079579128c0b21d2407464e2b17a842ca77d437df58a1d"
+  },
+  "ps2_frame": "4289020c443d2bf80f0f50f1816fcad25f499fca8db0a8fe963638712280fc57"
+}

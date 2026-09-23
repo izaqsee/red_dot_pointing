@@ -5,15 +5,18 @@
 
 struct DeviceConfig {
   float pointerSensitivity;
-  float middleSensitivity;
-  bool invertX;
-  bool invertY;
+  float wheelSensitivityX;
+  float wheelSensitivityY;
+  bool wheelInvertX;
+  bool wheelInvertY;
+  bool pointerInvertX;
+  bool pointerInvertY;
   ButtonAction leftAction;
   ButtonAction middleAction;
   ButtonAction rightAction;
 };
 
-constexpr DeviceConfig DEFAULT_CONFIG = {1.00f, 0.40f, false, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION};
+constexpr DeviceConfig DEFAULT_CONFIG = {1.00f, 0.40f, 0.40f, false, false, false, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION};
 constexpr float MIN_SENSITIVITY = 0.0f;
 constexpr float MAX_SENSITIVITY = 10.0f;
 
@@ -21,7 +24,7 @@ bool validDeviceConfig(const DeviceConfig &value);
 
 extern DeviceConfig config;
 
-// Boot baseline includes defaults and logical v1 migration.
+// Boot baseline includes defaults and logical v1/v2 migration.
 void configSetPersistentBaseline(const DeviceConfig &value);
 bool configUnsaved();
 bool equalDeviceConfig(const DeviceConfig &a, const DeviceConfig &b);

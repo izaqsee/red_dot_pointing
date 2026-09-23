@@ -30,4 +30,4 @@ assert sum("executeConfigCommand" in name for name in symbols) == 1
 print("PASS: generated fsdata and final ELF assets match current Configurator; HTTP/CDC share one command core")
 for name, digest in json.loads((target / "milestone_a_freeze.json").read_text()).items():
     assert hashlib.sha256((target / name).read_bytes()).hexdigest() == digest, name
-print("PASS: frozen USB/HID descriptors, USB configuration and frontend sources unchanged")
+print("PASS: frozen USB/HID descriptors, USB configuration and frontend style/shortcut sources unchanged")

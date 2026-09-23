@@ -1,8 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
+const { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
 
-const defaults = () => ({ pointerSensitivity: 1, middleSensitivity: 0.4, invertX: false, invertY: false });
+const defaults = () => ({ pointerSensitivity: 1, wheelSensitivityX: 0.4, wheelSensitivityY: 0.4, wheelInvertX: false, wheelInvertY: false, pointerInvertX: false, pointerInvertY: false });
 const actionDefaults = () => ({ ...defaults(), leftAction: "mouse:left", middleAction: "mouse:middle", rightAction: "mouse:right" });
 const { CODE_MAP, validAction, actionLabel, createShortcutRecorder } = require("../configurator/shortcuts.js");
 const response = (command = "GET", config = defaults()) => `@CONFIG ${JSON.stringify({ ok: true, command, config })}\r\n`;
@@ -23,7 +23,7 @@ test("line reader reconstructs chunks/CRLF and bounds malformed input", () => {
   accept("x".repeat(3000)); accept("\n" + response("RESET"));
   assert.deepEqual(lines.map(line => parseLine(line).kind), ["debug", "config", "config"]);
   assert.equal(parseLine("unknown").kind, "unknown");
-  for (const line of ["@CONFIG {", "@CONFIG null", '@CONFIG {"ok":true}', response("GET", { ...defaults(), invertX: 1 }).trim(), response("GET", { ...defaults(), pointerSensitivity: 11 }).trim()]) {
+  for (const line of ["@CONFIG {", "@CONFIG null", '@CONFIG {"ok":true}', response("GET", { ...defaults(), pointerInvertX: 1 }).trim(), response("GET", { ...defaults(), pointerSensitivity: 11 }).trim()]) {
     assert.equal(parseLine(line).kind, "invalid");
   }
 });
@@ -31,14 +31,14 @@ test("line reader reconstructs chunks/CRLF and bounds malformed input", () => {
 test("single request, mixed debug/invalid input, authoritative response and device error", async () => {
   const writes = [];
   const protocol = createProtocol(async line => writes.push(line), 100);
-  const result = protocol.request("SET middleSensitivity 0.25");
+  const result = protocol.request("SET wheelSensitivityX 0.25");
   await assert.rejects(protocol.request("GET"), /BUSY/);
   protocol.accept('@DEBUG PTR anything\n@CONFIG invalid\nunknown\n');
   protocol.accept(response("GET")); // A different command cannot complete SET.
-  protocol.accept(response("SET", { ...defaults(), middleSensitivity: 0.25 }));
-  assert.equal((await result).middleSensitivity, 0.25);
-  assert.deepEqual(writes, ["SET middleSensitivity 0.25\n"]);
-  const rejected = protocol.request("SET invertX 1");
+  protocol.accept(response("SET", { ...defaults(), wheelSensitivityX: 0.25 }));
+  assert.equal((await result).wheelSensitivityX, 0.25);
+  assert.deepEqual(writes, ["SET wheelSensitivityX 0.25\n"]);
+  const rejected = protocol.request("SET pointerInvertX 1");
   protocol.accept('@CONFIG {"ok":false,"error":"INVALID_VALUE"}\n');
   await assert.rejects(rejected, /INVALID_VALUE/);
   protocol.close();
@@ -47,16 +47,16 @@ test("single request, mixed debug/invalid input, authoritative response and devi
 test("timeout blocks mutation until GET resync; late SET/errors do not resolve GET", async () => {
   const writes = [];
   const protocol = createProtocol(async line => writes.push(line), 25);
-  await assert.rejects(protocol.request("SET invertX 1"), /TIMEOUT/);
-  await assert.rejects(protocol.request("SET invertY 1"), /RESYNC_REQUIRED/);
+  await assert.rejects(protocol.request("SET pointerInvertX 1"), /TIMEOUT/);
+  await assert.rejects(protocol.request("SET pointerInvertY 1"), /RESYNC_REQUIRED/);
   let settled = false;
   const get = protocol.request("GET", { resync: true }).then(config => { settled = true; return config; });
   protocol.accept(response("SET"));
   protocol.accept('@CONFIG {"ok":false,"error":"INVALID_LINE"}\n');
   await sleep(2);
   assert.equal(settled, false);
-  protocol.accept(response("GET", { ...defaults(), invertX: true }));
-  assert.equal((await get).invertX, true);
+  protocol.accept(response("GET", { ...defaults(), pointerInvertX: true }));
+  assert.equal((await get).pointerInvertX, true);
   assert.equal(writes[1], "\nGET\n");
   const pending = protocol.request("GET");
   protocol.close();
@@ -123,7 +123,7 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
           port.rejectNext = false;
           reply = '@CONFIG {"ok":false,"error":"INVALID_VALUE"}\n';
         } else {
-          if (command === "SET") port.config[key] = key.endsWith("Action") ? value : key.startsWith("invert") ? value === "1" : Number(value);
+          if (command === "SET") port.config[key] = key.endsWith("Action") ? value : key.includes("Invert") ? value === "1" : Number(value);
           if (command === "RESET") port.config = withActions ? actionDefaults() : defaults();
           if (command === "SAVE") onSave({ ...port.config });
           reply = response(command, port.config);
@@ -160,7 +160,7 @@ function fakeDocument() {
   const elements = new Map();
   const doc = { ...eventTarget(), defaultView: eventTarget(), getElementById(id) {
     if (!elements.has(id)) elements.set(id, {
-      type: id.startsWith("invert") ? "checkbox" : "range", value: "", checked: false,
+      type: id.includes("Invert") ? "checkbox" : "range", value: "", checked: false,
       disabled: false, dataset: {}, textContent: "", events: {},
       addEventListener(type, handler) { this.events[type] = handler; },
       fire(type) { this.events[type]?.({ target: this }); }
@@ -232,8 +232,8 @@ test("UI confirms only replies, coalesces edits, preserves newer drafts, queues 
   await until(() => ui.el("pointerSensitivity-confirmed").textContent.includes("1.30×"));
   assert.equal(ui.el("pointerSensitivity-value").textContent, "1.40×");
   await until(() => port.commands.length === 3);
-  ui.el("invertX").checked = true;
-  ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true;
+  ui.el("pointerInvertX").fire("input");
   ui.el("reset").fire("click");
   assert.equal(ui.el("pointer-controls").disabled, true);
   port.hold = false;
@@ -251,10 +251,10 @@ test("rejected edits restore confirmed state; unplug and reconnect work", async 
   const ui = setupUI();
   const port = await ui.connect();
   port.rejectNext = true;
-  ui.el("invertY").checked = true;
-  ui.el("invertY").fire("input");
+  ui.el("pointerInvertY").checked = true;
+  ui.el("pointerInvertY").fire("input");
   await until(() => ui.el("message").textContent.includes("INVALID_VALUE"));
-  assert.equal(ui.el("invertY").checked, false);
+  assert.equal(ui.el("pointerInvertY").checked, false);
   port.unplug();
   await until(() => ui.el("connection-status").textContent === "Disconnected");
   assert.equal(ui.el("connect").disabled, false);
@@ -282,19 +282,19 @@ test("UI timeout resynchronizes from device and discards unsent proposals", asyn
   const ui = setupUI();
   const port = await ui.connect();
   port.hold = true;
-  ui.el("invertX").checked = true;
-  ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true;
+  ui.el("pointerInvertX").fire("input");
   await until(() => port.commands.length === 2);
-  ui.el("invertY").checked = true;
-  ui.el("invertY").fire("input");
+  ui.el("pointerInvertY").checked = true;
+  ui.el("pointerInvertY").fire("input");
   await until(() => port.commands.at(-1) === "GET", 3000);
   assert.equal(ui.el("pointer-controls").disabled, true);
   port.hold = false;
   port.release(); // Includes the late SET, then the resync GET.
   await until(() => ui.el("connection-status").textContent === "Connected");
-  assert.equal(ui.el("invertX").checked, true);
-  assert.equal(ui.el("invertY").checked, false);
-  assert.deepEqual(port.commands, ["GET", "SET invertX 1", "GET"]);
+  assert.equal(ui.el("pointerInvertX").checked, true);
+  assert.equal(ui.el("pointerInvertY").checked, false);
+  assert.deepEqual(port.commands, ["GET", "SET pointerInvertX 1", "GET"]);
   await ui.disconnect();
 });
 
@@ -302,15 +302,15 @@ test("UI failed resync disconnects, then a fresh connection starts with GET", as
   const ui = setupUI();
   const port = await ui.connect();
   port.hold = true;
-  ui.el("invertX").checked = true;
-  ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true;
+  ui.el("pointerInvertX").fire("input");
   await until(() => ui.el("connection-status").textContent === "Disconnected", 5000);
   assert.equal(port.closed, true);
   assert.equal(ui.el("connect").disabled, false);
   assert.match(ui.el("message").textContent, /再同期できません/);
   const fresh = await ui.connect();
   assert.deepEqual(fresh.commands, ["GET"]);
-  assert.equal(ui.el("invertX").checked, false);
+  assert.equal(ui.el("pointerInvertX").checked, false);
   await ui.disconnect();
 });
 
@@ -318,12 +318,12 @@ test("disconnect cancels in-flight requests and never leaks drafts to a new sess
   const ui = setupUI();
   const port = await ui.connect();
   port.hold = true;
-  ui.el("invertX").checked = true;
-  ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true;
+  ui.el("pointerInvertX").fire("input");
   await until(() => port.commands.length === 2);
   await ui.disconnect();
   const fresh = await ui.connect();
-  assert.equal(ui.el("invertX").checked, false);
+  assert.equal(ui.el("pointerInvertX").checked, false);
   assert.deepEqual(fresh.commands, ["GET"]);
   await ui.disconnect();
 });
@@ -336,11 +336,11 @@ test("SAVE waits for all SET replies, confirms persistence, and reconnect GET do
   assert.equal(ui.el("save").disabled, false);
   assert.equal(ui.el("save-status").textContent, "保存状態未確認");
   port.hold = true;
-  ui.el("middleSensitivity").value = "0.25";
-  ui.el("middleSensitivity").fire("input");
+  ui.el("wheelSensitivityX").value = "0.25";
+  ui.el("wheelSensitivityX").fire("input");
   ui.el("save").fire("click"); // Before debounce expires.
   await until(() => port.commands.length === 2);
-  assert.equal(port.commands[1], "SET middleSensitivity 0.25");
+  assert.equal(port.commands[1], "SET wheelSensitivityX 0.25");
   assert.equal(ui.el("save-status").textContent, "Saving…");
   assert.equal(ui.el("pointer-controls").disabled, true);
   assert.equal(ui.el("save").disabled, true);
@@ -355,7 +355,7 @@ test("SAVE waits for all SET replies, confirms persistence, and reconnect GET do
   assert.equal(ui.el("save").disabled, true);
   const fresh = await ui.connect();
   assert.deepEqual(fresh.commands, ["GET"]);
-  assert.equal(ui.el("middleSensitivity-value").textContent, "0.25×");
+  assert.equal(ui.el("wheelSensitivityX-value").textContent, "0.25×");
   assert.equal(ui.el("save-status").textContent, "保存状態未確認");
   await ui.disconnect();
 });
@@ -365,20 +365,20 @@ test("SET and RESET change Saved to Unsaved without automatically sending SAVE",
   const port = await ui.connect();
   ui.el("save").fire("click");
   await until(() => ui.el("save-status").textContent === "Saved");
-  ui.el("invertX").checked = true;
-  ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true;
+  ui.el("pointerInvertX").fire("input");
   assert.equal(ui.el("save-status").textContent, "Unsaved changes");
-  await until(() => ui.el("invertX-confirmed").textContent === "デバイス確認値: On");
+  await until(() => ui.el("pointerInvertX-confirmed").textContent === "デバイス確認値: On");
   assert.equal(ui.el("save-status").textContent, "Unsaved changes");
   assert.equal(port.commands.filter(line => line === "SAVE").length, 1);
   ui.el("save").fire("click");
   await until(() => ui.el("save-status").textContent === "Saved");
   ui.el("reset").fire("click");
-  await until(() => ui.el("invertX-confirmed").textContent === "デバイス確認値: Off");
+  await until(() => ui.el("pointerInvertX-confirmed").textContent === "デバイス確認値: Off");
   assert.equal(ui.el("save-status").textContent, "Unsaved changes");
   await ui.disconnect();
   await ui.connect(); // Mock reboot loads earlier saved value, not RESET's RAM default.
-  assert.equal(ui.el("invertX").checked, true);
+  assert.equal(ui.el("pointerInvertX").checked, true);
   await ui.disconnect();
 });
 
@@ -419,11 +419,11 @@ test("failed SET cancels queued SAVE; rapid repeated Save sends only once", asyn
   const ui = setupUI();
   const port = await ui.connect();
   port.rejectNext = true;
-  ui.el("invertY").checked = true;
-  ui.el("invertY").fire("input");
+  ui.el("pointerInvertY").checked = true;
+  ui.el("pointerInvertY").fire("input");
   ui.el("save").fire("click");
   await until(() => ui.el("message").textContent.includes("INVALID_VALUE"));
-  assert.deepEqual(port.commands, ["GET", "SET invertY 1"]);
+  assert.deepEqual(port.commands, ["GET", "SET pointerInvertY 1"]);
   assert.equal(ui.el("save").disabled, false);
   port.hold = true;
   ui.el("save").fire("click");
@@ -597,8 +597,8 @@ test("heartbeat probes, skips busy/user drafts, resumes, and stops", async t => 
   t.after(() => { h.stop(); p.close(); });
   h.start(); await sleep(35); assert.deepEqual(sent, []);
   allow = true;
-  const set = p.request("SET invertX 1");
-  await sleep(35); assert.deepEqual(sent, ["SET invertX 1"]);
+  const set = p.request("SET pointerInvertX 1");
+  await sleep(35); assert.deepEqual(sent, ["SET pointerInvertX 1"]);
   p.accept(response("SET")); await set;
   await until(() => sent.includes("PING"));
   allow = false; const count = sent.length;
@@ -618,8 +618,8 @@ test("UNKNOWN_COMMAND disables heartbeat once and normal requests continue", asy
   t.after(() => { h.stop(); p.close(); });
   h.start(); await sleep(50);
   assert.deepEqual(sent, ["PING"]); assert.equal(errors, 0);
-  await p.request("SET invertX 1"); await p.request("SAVE");
-  assert.deepEqual(sent, ["PING", "SET invertX 1", "SAVE"]);
+  await p.request("SET pointerInvertX 1"); await p.request("SAVE");
+  assert.deepEqual(sent, ["PING", "SET pointerInvertX 1", "SAVE"]);
 });
 
 test("UI heartbeat stops on disconnect/unplug and probes each reconnect", async t => {
@@ -643,13 +643,13 @@ test("user SET/SAVE drain immediately after an in-flight PING, without overlappi
   const ui = setupUI(true, true, p => { p.holdPing = true; });
   t.after(() => ui.disconnect());
   const port = await ui.connect();
-  ui.el("invertX").checked = true; ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true; ui.el("pointerInvertX").fire("input");
   ui.el("save").fire("click");
   await sleep(160);
   assert.deepEqual(port.allCommands, ["GET", "PING"]);
   port.emit('@CONFIG {"ok":true,"command":"PING"}\n');
   await until(() => ui.el("save-status").textContent === "Saved");
-  assert.deepEqual(port.allCommands, ["GET", "PING", "SET invertX 1", "SAVE"]);
+  assert.deepEqual(port.allCommands, ["GET", "PING", "SET pointerInvertX 1", "SAVE"]);
 });
 
 test("heartbeat timeout GET resync restores usable UI and ignores late PING", async t => {
@@ -660,10 +660,10 @@ test("heartbeat timeout GET resync restores usable UI and ignores late PING", as
   await until(() => ui.el("connection-status").textContent === "Connected");
   assert.equal(ui.el("pointer-controls").disabled, false);
   port.emit('@CONFIG {"ok":true,"command":"PING"}\n');
-  ui.el("invertY").checked = true; ui.el("invertY").fire("input");
+  ui.el("pointerInvertY").checked = true; ui.el("pointerInvertY").fire("input");
   ui.el("save").fire("click");
   await until(() => ui.el("save-status").textContent === "Saved");
-  assert.equal(port.config.invertY, true);
+  assert.equal(port.config.pointerInvertY, true);
 });
 
 
@@ -717,7 +717,7 @@ test("single authorized port uses one open/GET then heartbeat, supports legacy P
 });
 
 test("single authorized timeout and malformed-only response close and restore manual Connect", async () => {
-  for (const reply of ['', '@DEBUG hi\n@CONFIG {oops}\n' + response("GET", { invertX: true })]) {
+  for (const reply of ['', '@DEBUG hi\n@CONFIG {oops}\n' + response("GET", { pointerInvertX: true })]) {
     const port = fakePort(); port.getReply = reply;
     const ui = autoUI([port]); await ui.ready();
     assert.equal(port.closed, true); assertReleased(port);
@@ -865,7 +865,7 @@ function httpDevice() {
     if (device.fail) throw new Error("network lost");
     const [command, key, value] = options.body.trim().split(" ");
     if (device.reject) { device.reject = false; return httpReply('@CONFIG {"ok":false,"error":"INVALID_VALUE"}\n'); }
-    if (command === "SET") device.config[key] = key.endsWith("Action") ? value : key.startsWith("invert") ? value === "1" : Number(value);
+    if (command === "SET") device.config[key] = key.endsWith("Action") ? value : key.includes("Invert") ? value === "1" : Number(value);
     if (command === "RESET") device.config = actionDefaults();
     const reply = httpReply(command === "PING" ? '@CONFIG {"ok":true,"command":"PING"}\n' : response(command, { ...device.config }));
     if (command === "SET" && device.holdSet) return new Promise(resolve => device.releases.push(() => resolve(reply)));
@@ -890,6 +890,17 @@ test("Pico backend captured GET/PING reaches Connected without Serial or secure 
       GET: fs.readFileSync(capture, "utf8"),
       PING: fs.readFileSync(capture + ".ping", "utf8")
     };
+    const config = JSON.parse(replies.GET.slice(8)).config;
+    // Old Pages validates/extracts these names and ignores extra canonical fields.
+    for (const key of ["pointerSensitivity", "middleSensitivity"]) {
+      assert.equal(typeof config[key], "number");
+      assert.ok(Number.isFinite(config[key]) && config[key] >= 0 && config[key] <= 10);
+    }
+    assert.equal(typeof config.invertX, "boolean");
+    assert.equal(typeof config.invertY, "boolean");
+    assert.equal(config.middleSensitivity, config.wheelSensitivityY);
+    assert.equal(config.invertX, config.pointerInvertX);
+    assert.equal(config.invertY, config.pointerInvertY);
     const calls = [];
     const ui = httpUI({ async fetch(url, options) {
       assert.equal(url, "api/command");
@@ -911,11 +922,11 @@ test("HTTP probe works without Serial/secure context and shares GET/SET/RESET/SA
   await ui.ready();
   assert.equal(ui.el("port-info").textContent, "USB Ethernet · IPv4 Link-Local");
   assert.deepEqual(device.calls.map(c => c.body.trim()), ["GET", "PING"]);
-  ui.el("invertX").checked = true; ui.el("invertX").fire("input"); ui.el("save").fire("click");
+  ui.el("pointerInvertX").checked = true; ui.el("pointerInvertX").fire("input"); ui.el("save").fire("click");
   await until(() => ui.el("save-status").textContent === "Saved");
-  assert.equal(device.config.invertX, true);
+  assert.equal(device.config.pointerInvertX, true);
   ui.el("reset").fire("click"); await until(() => device.calls.some(c => c.body.trim() === "RESET"));
-  assert.equal(device.config.invertX, false);
+  assert.equal(device.config.pointerInvertX, false);
 });
 
 test("HTTP failure falls back to existing authorized Serial discovery, never opens picker", async t => {
@@ -929,7 +940,7 @@ test("HTTP failure falls back to existing authorized Serial discovery, never ope
 test("malformed HTTP probe times out into Serial fallback; valid HTTP bypasses Serial", async t => {
   let discoveries = 0;
   const serial = { async getPorts() { discoveries++; return []; }, addEventListener() {} };
-  const ui = httpUI({ fetch: async () => httpReply('@DEBUG hi\n@CONFIG {oops}\n' + response("GET", { invertX: true })) }, serial, true);
+  const ui = httpUI({ fetch: async () => httpReply('@DEBUG hi\n@CONFIG {oops}\n' + response("GET", { pointerInvertX: true })) }, serial, true);
   await ui.ready("Disconnected"); assert.equal(discoveries, 1); assert.equal(ui.el("connect").disabled, false);
   const good = httpUI(httpDevice(), serial, true); t.after(() => good.close());
   await good.ready(); assert.equal(discoveries, 1);
@@ -938,7 +949,7 @@ test("malformed HTTP probe times out into Serial fallback; valid HTTP bypasses S
 test("HTTP protocol errors remain protocol errors; fetch/HTTP errors are transport failures", async () => {
   const device = httpDevice(); const active = createHttpConnection(device.fetch);
   await active.openAndSync(); device.reject = true;
-  await assert.rejects(active.protocol.request("SET invertX 1"), error => error.code === "INVALID_VALUE");
+  await assert.rejects(active.protocol.request("SET pointerInvertX 1"), error => error.code === "INVALID_VALUE");
   assert.equal(active.protocol.isIdle(), true);
   device.fail = true; await assert.rejects(active.protocol.request("GET"), /WRITE_FAILED.*network lost/);
   await active.close();
@@ -963,16 +974,16 @@ test("late HTTP GET cannot complete a newer GET resync, even if fetch ignores ab
 test("HTTP SET timeout uses existing GET resync and ignores late SET body", async t => {
   const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close()); await ui.ready();
   device.holdSet = true;
-  ui.el("invertX").checked = true; ui.el("invertX").fire("input");
+  ui.el("pointerInvertX").checked = true; ui.el("pointerInvertX").fire("input");
   await until(() => device.calls.filter(c => c.body.trim() === "GET").length === 2, 2800);
-  await ui.ready(); assert.match(ui.el("invertX-confirmed").textContent, /On/);
+  await ui.ready(); assert.match(ui.el("pointerInvertX-confirmed").textContent, /On/);
   device.releases[0](); await sleep(10);
   assert.equal(ui.el("connection-status").textContent, "Connected");
 });
 
 test("HTTP Disconnect aborts pending fetch; reconnect starts a new GET without permission", async t => {
   const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close()); await ui.ready();
-  device.holdSet = true; ui.el("invertY").checked = true; ui.el("invertY").fire("input");
+  device.holdSet = true; ui.el("pointerInvertY").checked = true; ui.el("pointerInvertY").fire("input");
   await until(() => device.releases.length === 1);
   const old = device.calls.find(c => c.body.startsWith("SET"));
   await ui.close(); assert.equal(old.signal.aborted, true);
@@ -987,4 +998,55 @@ test("HTTP fetch loss disconnects and keeps HTTP reconnect available on iPad", a
   device.fail = true; ui.el("save").fire("click"); await ui.ready("Disconnected");
   assert.equal(ui.el("connect").disabled, false);
   device.fail = false; ui.el("connect").fire("click"); await ui.ready();
+});
+
+
+test("C.2 validates independent axes and requires the complete new schema", () => {
+  assert.ok(validConfig(actionDefaults()));
+  for (const key of ["wheelSensitivityX", "wheelSensitivityY"]) {
+    for (const value of [-1, 11, NaN, Infinity, "0.4"]) assert.ok(!validConfig({ ...defaults(), [key]: value }));
+    assert.ok(validConfig({ ...defaults(), [key]: 0 }));
+  }
+  for (const key of ["pointerInvertX", "pointerInvertY", "wheelInvertX", "wheelInvertY"]) {
+    assert.ok(!validConfig({ ...defaults(), [key]: 1 }));
+    const missing = defaults(); delete missing[key]; assert.ok(!validConfig(missing));
+  }
+  assert.ok(!validConfig({pointerSensitivity:1,middleSensitivity:0.4,invertX:false,invertY:false}));
+});
+
+test("C.2 UI edits target each canonical field and RESET restores separate defaults", async () => {
+  const ui = setupUI(true);
+  await ui.connect();
+  const port = ui.ports[0];
+  for (const [key,value] of Object.entries({pointerSensitivity:2,pointerInvertX:true,pointerInvertY:true,
+      wheelSensitivityX:0,wheelSensitivityY:0.75,wheelInvertX:true,wheelInvertY:true})) {
+    const control = ui.el(key);
+    if (typeof value === "boolean") control.checked = value; else control.value = String(value);
+    control.fire("input");
+    await until(() => port.config[key] === value);
+    await until(() => !ui.el(`${key}-confirmed`).textContent.includes("反映待ち"));
+    assert.ok(port.commands.includes(`SET ${key} ${typeof value === "boolean" ? 1 : value.toFixed(2)}`));
+  }
+  ui.el("reset").fire("click"); await until(() => port.commands.includes("RESET") && !ui.el("reset").disabled);
+  assert.deepEqual(port.config, actionDefaults());
+  assert.equal(ui.el("wheel-controls").disabled, false);
+  ui.el("disconnect").fire("click"); await until(() => ui.el("connect").disabled === false);
+  assert.equal(ui.el("wheel-controls").disabled, true);
+});
+
+test("C.2 HTML wires controls into Pointer/Wheel/Buttons with unique IDs", () => {
+  const fs = require("node:fs");
+  const html = fs.readFileSync(require("node:path").join(__dirname,"../configurator/index.html"),"utf8");
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
+  assert.equal(new Set(ids).size,ids.length);
+  const groups = {"pointer-controls":["pointerSensitivity","pointerInvertX","pointerInvertY"],
+    "wheel-controls":["wheelSensitivityX","wheelSensitivityY","wheelInvertX","wheelInvertY"],
+    "button-controls":["leftAction","middleAction","rightAction"]};
+  for(const [id,fields] of Object.entries(groups)) {
+    const body = html.match(new RegExp(`<fieldset id="${id}" disabled>([\\s\\S]*?)</fieldset>`))?.[1];
+    assert.ok(body,id);
+    for(const field of fields) assert.ok(body.includes(`id="${field}"`),field);
+  }
+  assert.ok(html.indexOf('id="pointer-title"') < html.indexOf('id="wheel-title"'));
+  assert.ok(html.indexOf('id="wheel-title"') < html.indexOf('id="buttons-title"'));
 });

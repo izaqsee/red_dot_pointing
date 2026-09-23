@@ -50,9 +50,10 @@ uint32_t crc32(const uint8_t *p, size_t length) {
 } // namespace
 
 bool validDeviceConfig(const DeviceConfig &value) {
-  return isfinite(value.pointerSensitivity) && isfinite(value.middleSensitivity) &&
+  return isfinite(value.pointerSensitivity) && isfinite(value.wheelSensitivityX) && isfinite(value.wheelSensitivityY) &&
     value.pointerSensitivity >= MIN_SENSITIVITY && value.pointerSensitivity <= MAX_SENSITIVITY &&
-    value.middleSensitivity >= MIN_SENSITIVITY && value.middleSensitivity <= MAX_SENSITIVITY &&
+    value.wheelSensitivityX >= MIN_SENSITIVITY && value.wheelSensitivityX <= MAX_SENSITIVITY &&
+    value.wheelSensitivityY >= MIN_SENSITIVITY && value.wheelSensitivityY <= MAX_SENSITIVITY &&
     validButtonAction(value.leftAction) && validButtonAction(value.middleAction) && validButtonAction(value.rightAction);
 }
 
@@ -63,9 +64,9 @@ bool encodeConfigRecord(const DeviceConfig &value, uint8_t *record) {
   put16(record + 4, CONFIG_FORMAT_VERSION);
   put16(record + 6, CONFIG_RECORD_SIZE);
   putFloat(record + 8, value.pointerSensitivity);
-  putFloat(record + 12, value.middleSensitivity);
-  record[16] = value.invertX ? 1 : 0;
-  record[17] = value.invertY ? 1 : 0;
+  putFloat(record + 12, value.wheelSensitivityX);
+  record[16] = value.pointerInvertX ? 1 : 0;
+  record[17] = value.pointerInvertY ? 1 : 0;
   const ButtonAction actions[] = {value.leftAction, value.middleAction, value.rightAction};
   for (size_t i = 0; i < 3; ++i) {
     const size_t offset = 20 + i * 4;
@@ -73,6 +74,9 @@ bool encodeConfigRecord(const DeviceConfig &value, uint8_t *record) {
     record[offset + 1] = actions[i].code;
     record[offset + 2] = actions[i].modifiers;
   }
+  putFloat(record + 32, value.wheelSensitivityY);
+  record[36] = value.wheelInvertX ? 1 : 0;
+  record[37] = value.wheelInvertY ? 1 : 0;
   put32(record + CRC_OFFSET, crc32(record, CRC_OFFSET));
   return true;
 }
@@ -81,17 +85,24 @@ bool decodeConfigRecord(const uint8_t *record, DeviceConfig &value, size_t size)
   value = DEFAULT_CONFIG;
   if (size < CONFIG_RECORD_V1_SIZE || get32(record) != CONFIG_MAGIC) return false;
   const uint16_t version = get16(record + 4);
-  if (version != 1 && version != CONFIG_FORMAT_VERSION) return false;
-  const size_t length = version == 1 ? CONFIG_RECORD_V1_SIZE : CONFIG_RECORD_SIZE;
+  if (version != 1 && version != 2 && version != CONFIG_FORMAT_VERSION) return false;
+  const size_t length = version == 1 ? CONFIG_RECORD_V1_SIZE : version == 2 ? CONFIG_RECORD_V2_SIZE : CONFIG_RECORD_SIZE;
   const size_t crcOffset = length - sizeof(uint32_t);
   if (size < length || get16(record + 6) != length || get32(record + crcOffset) != crc32(record, crcOffset) ||
       record[16] > 1 || record[17] > 1 || record[18] != 0 || record[19] != 0) return false;
   DeviceConfig decoded = DEFAULT_CONFIG; // v1 migration adds default actions in RAM only.
   decoded.pointerSensitivity = getFloat(record + 8);
-  decoded.middleSensitivity = getFloat(record + 12);
-  decoded.invertX = record[16] == 1;
-  decoded.invertY = record[17] == 1;
-  if (version == CONFIG_FORMAT_VERSION) {
+  decoded.wheelSensitivityX = getFloat(record + 12);
+  decoded.wheelSensitivityY = decoded.wheelSensitivityX;
+  if (version == 3) {
+    if (record[36] > 1 || record[37] > 1 || record[38] || record[39]) return false;
+    decoded.wheelSensitivityY = getFloat(record + 32);
+    decoded.wheelInvertX = record[36] == 1;
+    decoded.wheelInvertY = record[37] == 1;
+  }
+  decoded.pointerInvertX = record[16] == 1;
+  decoded.pointerInvertY = record[17] == 1;
+  if (version >= 2) {
     ButtonAction *actions[] = {&decoded.leftAction, &decoded.middleAction, &decoded.rightAction};
     for (size_t i = 0; i < 3; ++i) {
       const size_t offset = 20 + i * 4;

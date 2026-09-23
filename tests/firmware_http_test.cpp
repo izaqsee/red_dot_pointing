@@ -55,7 +55,7 @@ void runHttpTests() {
   loadDeviceConfig(config); configSetPersistentBaseline(config);
   statusLedBegin(); statusLedEndBoot();
   ConfigResponse direct;
-  for (const std::string command : {"GET", "SET invertX 1", "SET rightAction key:03:17", "PING", "SAVE", "RESET", "SET nope 1", "SET invertY 9", "BAD"}) {
+  for (const std::string command : {"GET", "SET pointerInvertX 1", "SET rightAction key:03:17", "PING", "SAVE", "RESET", "SET nope 1", "SET pointerInvertY 9", "BAD"}) {
     executeConfigCommand(command.data(), command.size(), direct);
     Stream serial; serial.input = command + "\n";
     while (serial.available()) pollConfigSerial(serial);
@@ -66,10 +66,10 @@ void runHttpTests() {
     assert(wire.substr(wire.find("\r\n\r\n") + 4) == direct.text);
   }
   executeConfigCommand("RESET", 5, direct); takeConfigChange();
-  assert(post("SET invertX 1\n").find("\"ok\":true") != std::string::npos);
-  assert(takeConfigChange() && !takeConfigChange() && config.invertX);
+  assert(post("SET pointerInvertX 1\n").find("\"ok\":true") != std::string::npos);
+  assert(takeConfigChange() && !takeConfigChange() && config.pointerInvertX);
   const auto before = config;
-  for (const auto &body : {std::string("SET invertX 0\nSAVE\n"), std::string("GET\0junk", 8), std::string(" \t\n")}) {
+  for (const auto &body : {std::string("SET pointerInvertX 0\nSAVE\n"), std::string("GET\0junk", 8), std::string(" \t\n")}) {
     assert(post(body).find("400 Bad Request") != std::string::npos);
     assert(equalDeviceConfig(before, config));
   }

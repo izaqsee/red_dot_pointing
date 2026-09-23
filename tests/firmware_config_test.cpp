@@ -23,8 +23,9 @@ bool equalAction(const ButtonAction &a, const ButtonAction &b) {
   return a.type == b.type && a.code == b.code && a.modifiers == b.modifiers;
 }
 bool equal(const DeviceConfig &a, const DeviceConfig &b) {
-  return a.pointerSensitivity == b.pointerSensitivity && a.middleSensitivity == b.middleSensitivity &&
-    a.invertX == b.invertX && a.invertY == b.invertY &&
+  return a.pointerSensitivity == b.pointerSensitivity && a.wheelSensitivityX == b.wheelSensitivityX && a.wheelSensitivityY == b.wheelSensitivityY &&
+    a.wheelInvertX == b.wheelInvertX && a.wheelInvertY == b.wheelInvertY &&
+    a.pointerInvertX == b.pointerInvertX && a.pointerInvertY == b.pointerInvertY &&
     equalAction(a.leftAction,b.leftAction) && equalAction(a.middleAction,b.middleAction) && equalAction(a.rightAction,b.rightAction);
 }
 
@@ -40,7 +41,7 @@ void repairCRC(uint8_t *record, size_t length = CONFIG_RECORD_SIZE) {
 }
 
 void expectFallback(const uint8_t *record) {
-  DeviceConfig result = {9, 9, true, true};
+  DeviceConfig result = DEFAULT_CONFIG; result.pointerSensitivity = 9;
   assert(!decodeConfigRecord(record, result));
   assert(equal(result, DEFAULT_CONFIG));
 }
@@ -56,11 +57,11 @@ bool command(Stream &serial, const std::string &text) {
 
 int main() {
   runActionTests();
-  const DeviceConfig custom = {1.25f, 0.35f, true, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION};
+  const DeviceConfig custom = {1.25f, 0.35f, 0.35f, false, false, true, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION};
   uint8_t record[CONFIG_RECORD_SIZE];
   assert(encodeConfigRecord(custom, record));
   assert(memcmp(record, "RPNT", 4) == 0);
-  assert(record[4] == 2 && record[5] == 0 && record[6] == 36 && record[7] == 0);
+  assert(record[4] == 3 && record[5] == 0 && record[6] == 44 && record[7] == 0);
   // IEEE-754 1.25 = 0x3fa00000, explicitly little endian.
   assert(record[8] == 0 && record[9] == 0 && record[10] == 0xa0 && record[11] == 0x3f);
   DeviceConfig decoded;
@@ -90,7 +91,7 @@ int main() {
     damaged[offset] ^= 1;
     expectFallback(damaged); // Includes every CRC byte and payload byte.
   }
-  for (int offset : {0, 4, 6, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}) {
+  for (int offset : {0, 4, 6, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 36, 37, 38, 39}) {
     memcpy(damaged, record, sizeof(record));
     damaged[offset] = 0xfe;
     repairCRC(damaged);
@@ -98,7 +99,7 @@ int main() {
   }
   for (float bad : {-0.1f, 10.1f, std::numeric_limits<float>::infinity(),
                     std::numeric_limits<float>::quiet_NaN()}) {
-    for (int offset : {8, 12}) {
+    for (int offset : {8, 12, 32}) {
       memcpy(damaged, record, sizeof(record));
       uint32_t bits;
       memcpy(&bits, &bad, 4);
@@ -112,7 +113,7 @@ int main() {
     assert(!encodeConfigRecord(invalid, damaged));
     assert(saveDeviceConfig(invalid) == ConfigSaveResult::InvalidConfig);
     invalid = custom;
-    invalid.middleSensitivity = bad;
+    invalid.wheelSensitivityX = bad;
     assert(!encodeConfigRecord(invalid, damaged));
   }
   assert(EEPROM.commits == 0 && EEPROM.writes == 0);
@@ -138,13 +139,13 @@ int main() {
   configSetPersistentBaseline(config);
   assert(!configUnsaved()); // RESET without SAVE.
 
-  assert(command(serial, "SET middleSensitivity 0.25\n"));
+  assert(command(serial, "SET wheelSensitivityX 0.25\n"));
   assert(EEPROM.commits == 0 && EEPROM.writes == 0);
   assert(!command(serial, "SAVE\n"));
   assert(EEPROM.commits == 1);
   assert(takeConfigFlashWrite() && !takeConfigFlashWrite());
   assert(serial.output.find("\"ok\":true,\"command\":\"SAVE\"") != std::string::npos);
-  assert(loadDeviceConfig(config) && config.middleSensitivity == 0.25f);
+  assert(loadDeviceConfig(config) && config.wheelSensitivityX == 0.25f);
   command(serial, "SAVE\n");
   assert(EEPROM.commits == 1 && !takeConfigFlashWrite());
   command(serial, "SAVE extra\n");
@@ -176,6 +177,35 @@ int main() {
   command(serial, "SAVE\n");
   assert(EEPROM.commits == beforeCorruption + 1);
   assert(loadDeviceConfig(config) && equal(config, DEFAULT_CONFIG));
+  // Independent v2 fixture: custom actions, shared old sensitivity/inverts.
+  const uint8_t legacyV2[36] = {0x52, 0x50, 0x4e, 0x54, 0x02, 0x00, 0x24, 0x00, 0x00, 0x00, 0xa0, 0x3f, 0x33, 0x33, 0xb3, 0x3e, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x17, 0x03, 0x00, 0x01, 0x03, 0x00, 0x00, 0xa8, 0x92, 0x91, 0xa9};
+  assert(decodeConfigRecord(legacyV2, decoded, sizeof(legacyV2)));
+  assert(decoded.pointerSensitivity == 1.25f && decoded.pointerInvertX && !decoded.pointerInvertY);
+  assert(decoded.wheelSensitivityX == 0.35f && decoded.wheelSensitivityY == 0.35f);
+  assert(!decoded.wheelInvertX && !decoded.wheelInvertY);
+  assert(decoded.leftAction.type == ActionType::Disabled);
+  assert(decoded.middleAction.type == ActionType::KeyboardShortcut && decoded.middleAction.code == 0x17);
+  const auto migratedV2 = decoded;
+  for (size_t i=0;i<sizeof(legacyV2);++i) {
+    uint8_t bad[36]; memcpy(bad,legacyV2,36); bad[i]^=1;
+    assert(!decodeConfigRecord(bad,decoded,36));
+  }
+  const int commitsV2 = EEPROM.commits;
+  EEPROM.flash.fill(0xff); memcpy(EEPROM.flash.data(),legacyV2,36);
+  assert(loadDeviceConfig(config) && equal(config,migratedV2));
+  assert(EEPROM.commits == commitsV2 && EEPROM.flash[4] == 2);
+  command(serial,"SAVE\n");
+  assert(EEPROM.flash[4] == 3 && EEPROM.commits == commitsV2+1);
+  assert(loadDeviceConfig(config) && equal(config,migratedV2));
+  command(serial,"SET middleSensitivity 0.75\n");
+  assert(config.wheelSensitivityX == 0.75f && config.wheelSensitivityY == 0.75f);
+  command(serial,"SET invertY 1\n"); assert(config.pointerInvertY && !config.wheelInvertY);
+  command(serial,"SET wheelSensitivityX 0.25\n");
+  command(serial,"SET wheelInvertY 1\n"); command(serial,"SAVE\n");
+  assert(loadDeviceConfig(config) && config.wheelSensitivityX == 0.25f && config.wheelSensitivityY == 0.75f && config.wheelInvertY);
+  command(serial,"GET\n");
+  assert(serial.output.find("\"middleSensitivity\":0.750000") != std::string::npos);
+  assert(serial.output.size() < sizeof(ConfigResponse{}.text));
   // Golden v1 fixture created independently with Python struct + zlib.
   const uint8_t legacy[24] = {0x52, 0x50, 0x4e, 0x54, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00, 0xa0, 0x3f, 0x33, 0x33, 0xb3, 0x3e, 0x01, 0x00, 0x00, 0x00, 0xae, 0xd5, 0xb9, 0xdf};
   assert(decodeConfigRecord(legacy, decoded, sizeof(legacy)) && equal(decoded, custom));
@@ -201,7 +231,7 @@ int main() {
   command(serial, "GET\n");
   assert(serial.output.find("\"leftAction\":\"mouse:left\"") != std::string::npos);
   command(serial, "SAVE\n");
-  assert(EEPROM.flash[4] == 2 && EEPROM.flash[6] == 36 && EEPROM.commits == beforeMigration + 1);
+  assert(EEPROM.flash[4] == 3 && EEPROM.flash[6] == 44 && EEPROM.commits == beforeMigration + 1);
   command(serial, "SAVE\n"); assert(EEPROM.commits == beforeMigration + 1);
   assert(command(serial, "SET rightAction key:03:17\n"));
   assert(config.rightAction.type == ActionType::KeyboardShortcut && config.rightAction.code == 0x17);
@@ -261,21 +291,21 @@ void runStatusTests() {
   Stream serial;
   command(serial, "SET pointerSensitivity 2\n"); assert(configUnsaved());
   command(serial, "SET pointerSensitivity 1\n"); assert(!configUnsaved());
-  for (const char *cmd : {"SET middleSensitivity 2\n", "SET invertX 1\n", "SET invertY 1\n",
+  for (const char *cmd : {"SET wheelSensitivityX 2\n", "SET pointerInvertX 1\n", "SET pointerInvertY 1\n",
        "SET leftAction disabled\n", "SET middleAction disabled\n", "SET rightAction key:01:04\n"}) {
     command(serial, cmd); assert(configUnsaved());
     command(serial, "RESET\n"); assert(!configUnsaved());
   }
   EEPROM.flash.fill(0xff); loadDeviceConfig(config); configSetPersistentBaseline(config);
   EEPROM.onCommit = []() { assert(statusLedState() == StatusLedState::Saving && ledColor == 0xff00ff); };
-  command(serial, "SET invertX 1\n"); command(serial, "SAVE\n"); assert(!configUnsaved());
+  command(serial, "SET pointerInvertX 1\n"); command(serial, "SAVE\n"); assert(!configUnsaved());
   EEPROM.onCommit = nullptr;
   command(serial, "RESET\n"); assert(configUnsaved());
   EEPROM.commitFails = true; command(serial, "SAVE\n"); assert(configUnsaved());
-  command(serial, "SET invertX 1\n"); assert(!configUnsaved());
+  command(serial, "SET pointerInvertX 1\n"); assert(!configUnsaved());
   EEPROM.commitFails = false;
   testMillis += 6000;
-  for (const char *cmd : {"PING\n", "GET\n", "SET invertX 1\n", "RESET\n", "SAVE\n"}) {
+  for (const char *cmd : {"PING\n", "GET\n", "SET pointerInvertX 1\n", "RESET\n", "SAVE\n"}) {
     command(serial, cmd);
     testMillis += 5999;
     assert(statusLedState() == (configUnsaved() ? StatusLedState::Unsaved : StatusLedState::Connected));

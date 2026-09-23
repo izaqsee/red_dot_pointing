@@ -173,13 +173,12 @@ Middle感度は物理ボタン位置ではなく、現在heldのMouse Middle Act
 - **SAVE**: 現在の設定をFlashへ明示保存し、再起動後も読み込む。
 - **RESET**: RAMのみdefaultに戻す。SAVEしなければ再起動後は以前の保存値に戻る。
 - **RESET → SAVE**: defaultをFlashへ保存する。
-- **未保存・不正な保存データ**: 起動時に7項目すべてdefaultへfallbackする。
+- **未保存・不正な保存データ**: 起動時に全設定をdefaultへfallbackする。
 
-保存にはPhilhower core 6.1.0のEEPROM emulationを使用します。filesystemは使いません。
-36-byteのv2固定形式にmagic、version、record長、設定、CRC32を保持し、
-起動時に整合性・値の範囲を検証します。有効な旧v1 (24 bytes)はPointer設定を保持し、
-defaultのボタン割当をRAMへ追加します。移行時にFlashを書かず、次のSaveでv2を保存します。
-不正なv1/v2は完全defaultへ戻ります。詳細は[通信仕様](docs/protocol.md#flash保存形式と起動)を参照してください。
+共通codecは44-byte v3でPointer/Wheel独立設定とボタン割当、CRC32を保存します。
+Pico SDK版は既存sector `0x10FFF000–0x10FFFFFF`、Arduino版はEEPROM emulationを使用します。
+v1/v2をRAM上で移行し、次の明示Saveでv3へ更新します。不正recordは全defaultへ戻ります。
+詳細は[通信仕様](docs/protocol.md#flash保存形式と起動)と[Pico C.2報告](firmware/redpoint_pico/MILESTONE_C2.md)を参照してください。
 SET、RESET、起動時はFlashを書かず、SAVE時も前回保存内容と同一ならerase/writeを省略します。
 
 Save成功はデバイスでのcommitとFlash再読込照合が完了した後に通知されます。
@@ -262,7 +261,7 @@ python tests/run_firmware_tests.py
 firmware hostテストにはC++ compilerが必要です。WindowsではVisual Studio C++ Build Toolsを自動検出し、
 Linux/macOSではc++ / g++ / clang++を使います。CXXでcompiler実行ファイルも指定できます。
 本番の設定・保存・Actionコードをmock EEPROM / Mouse / Keyboardで実行し、実機へアクセスしません。
-record破損、範囲外、CRC、default fallback、v1移行、v2保存、SET/RESETの非永続性、
+record破損、範囲外、CRC、default fallback、v1/v2移行、v3保存、SET/RESETの非永続性、
 SAVEの検証・失敗・再読込・同値書込省略、Actionのlatch、重複所有、共有modifierのreleaseを確認します。
 WebテストはRecorder、旧firmware互換、デバイス応答による確定、保存状態、timeout再同期も確認します。
 

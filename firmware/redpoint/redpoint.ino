@@ -313,8 +313,8 @@ void handleTrackPointPacket(
   if (usbY > 127)  usbY = 127;
   if (usbY < -127) usbY = -127;
 
-  if (config.invertX) usbX = -usbX;
-  if (config.invertY) usbY = -usbY;
+  if (config.pointerInvertX) usbX = -usbX;
+  if (config.pointerInvertY) usbY = -usbY;
 
   // ----------------------------------------------------------
   // Middle button held:
@@ -331,8 +331,8 @@ void handleTrackPointPacket(
     pointerAccY = 0.0f;
 
     // 小さい移動量を捨てないよう、小数部を蓄積する
-    scrollAccX += usbX * config.middleSensitivity;
-    scrollAccY += usbY * config.middleSensitivity;
+    scrollAccX += usbX * config.wheelSensitivityX;
+    scrollAccY += usbY * config.wheelSensitivityY;
 
     outX = (int16_t)scrollAccX;
     outY = (int16_t)scrollAccY;

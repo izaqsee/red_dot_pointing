@@ -1,7 +1,7 @@
 "use strict";
 
 (() => {
-  const KEYS = ["pointerSensitivity", "middleSensitivity", "invertX", "invertY"];
+  const KEYS = ["pointerSensitivity", "pointerInvertX", "pointerInvertY", "wheelSensitivityX", "wheelSensitivityY", "wheelInvertX", "wheelInvertY"];
   const ACTION_KEYS = ["leftAction", "middleAction", "rightAction"];
   const ALL_KEYS = [...KEYS, ...ACTION_KEYS];
   const { validAction, actionLabel, createShortcutRecorder } =
@@ -14,10 +14,10 @@
   // Protocol: independent of the browser, SerialPort and DOM.
   function validConfig(config) {
     return config && typeof config === "object" &&
-      ["pointerSensitivity", "middleSensitivity"].every(key =>
+      ["pointerSensitivity", "wheelSensitivityX", "wheelSensitivityY"].every(key =>
         typeof config[key] === "number" && Number.isFinite(config[key]) &&
         config[key] >= 0 && config[key] <= 10) &&
-      typeof config.invertX === "boolean" && typeof config.invertY === "boolean" &&
+      ["pointerInvertX", "pointerInvertY", "wheelInvertX", "wheelInvertY"].every(key => typeof config[key] === "boolean") &&
       (ACTION_KEYS.every(key => !Object.hasOwn(config, key)) || ACTION_KEYS.every(key => validAction(config[key])));
   }
 
@@ -388,6 +388,7 @@
       byId("connect").disabled = !(supported || httpMode) || connectionState !== "disconnected";
       byId("disconnect").disabled = !session || connectionState === "disconnecting";
       byId("pointer-controls").disabled = !ready || resetRequested || saveRequested || Boolean(recordingKey);
+      byId("wheel-controls").disabled = byId("pointer-controls").disabled;
       byId("button-controls").disabled = !ready || !hasActions() || resetRequested || saveRequested || Boolean(recordingKey);
       byId("buttons-support").textContent = !ready ? "接続後に割当を取得します。" : hasActions() ?
         "操作はRAMへ反映します。再起動後も使うにはSaveしてください。" : "Firmware update required for button mapping";

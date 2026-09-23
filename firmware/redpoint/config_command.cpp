@@ -51,12 +51,25 @@ void reply(ResponseWriter &serial, const char *command) {
   serial.print(command);
   serial.print("\",\"config\":{\"pointerSensitivity\":");
   serial.print(config.pointerSensitivity, JSON_DECIMALS);
+  serial.print(",\"wheelSensitivityX\":");
+  serial.print(config.wheelSensitivityX, JSON_DECIMALS);
+  serial.print(",\"wheelSensitivityY\":");
+  serial.print(config.wheelSensitivityY, JSON_DECIMALS);
+  serial.print(",\"pointerInvertX\":");
+  serial.print(config.pointerInvertX ? "true" : "false");
+  serial.print(",\"pointerInvertY\":");
+  serial.print(config.pointerInvertY ? "true" : "false");
+  serial.print(",\"wheelInvertX\":");
+  serial.print(config.wheelInvertX ? "true" : "false");
+  serial.print(",\"wheelInvertY\":");
+  serial.print(config.wheelInvertY ? "true" : "false");
+  // Legacy Pages projection; only canonical fields own state. Old shared SET writes both axes.
   serial.print(",\"middleSensitivity\":");
-  serial.print(config.middleSensitivity, JSON_DECIMALS);
+  serial.print(config.wheelSensitivityY, JSON_DECIMALS);
   serial.print(",\"invertX\":");
-  serial.print(config.invertX ? "true" : "false");
+  serial.print(config.pointerInvertX ? "true" : "false");
   serial.print(",\"invertY\":");
-  serial.print(config.invertY ? "true" : "false");
+  serial.print(config.pointerInvertY ? "true" : "false");
   replyAction(serial, "leftAction", config.leftAction);
   replyAction(serial, "middleAction", config.middleAction);
   replyAction(serial, "rightAction", config.rightAction);
@@ -100,22 +113,25 @@ bool executeLine(char *line, ResponseWriter &serial) {
       error(serial, "INVALID_ARGUMENTS");
       return false;
     }
-    if (strcmp(key, "pointerSensitivity") == 0 ||
-        strcmp(key, "middleSensitivity") == 0) {
+    if (strcmp(key, "pointerSensitivity") == 0 || strcmp(key, "wheelSensitivityX") == 0 ||
+        strcmp(key, "wheelSensitivityY") == 0 || strcmp(key, "middleSensitivity") == 0) {
       float parsed;
-      if (!parseSensitivity(value, parsed)) {
-        error(serial, "INVALID_VALUE");
-        return false;
-      }
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
       if (strcmp(key, "pointerSensitivity") == 0) config.pointerSensitivity = parsed;
-      else config.middleSensitivity = parsed;
-    } else if (strcmp(key, "invertX") == 0 || strcmp(key, "invertY") == 0) {
+      else if (strcmp(key, "wheelSensitivityX") == 0) config.wheelSensitivityX = parsed;
+      else if (strcmp(key, "wheelSensitivityY") == 0) config.wheelSensitivityY = parsed;
+      else config.wheelSensitivityX = config.wheelSensitivityY = parsed;
+    } else if (strcmp(key, "pointerInvertX") == 0 || strcmp(key, "pointerInvertY") == 0 ||
+               strcmp(key, "wheelInvertX") == 0 || strcmp(key, "wheelInvertY") == 0 ||
+               strcmp(key, "invertX") == 0 || strcmp(key, "invertY") == 0) {
       if (strcmp(value, "0") != 0 && strcmp(value, "1") != 0) {
-        error(serial, "INVALID_VALUE");
-        return false;
+        error(serial, "INVALID_VALUE"); return false;
       }
-      if (strcmp(key, "invertX") == 0) config.invertX = value[0] == '1';
-      else config.invertY = value[0] == '1';
+      const bool parsed = value[0] == '1';
+      if (strcmp(key, "pointerInvertX") == 0 || strcmp(key, "invertX") == 0) config.pointerInvertX = parsed;
+      else if (strcmp(key, "pointerInvertY") == 0 || strcmp(key, "invertY") == 0) config.pointerInvertY = parsed;
+      else if (strcmp(key, "wheelInvertX") == 0) config.wheelInvertX = parsed;
+      else config.wheelInvertY = parsed;
     } else if (strcmp(key, "leftAction") == 0 || strcmp(key, "middleAction") == 0 || strcmp(key, "rightAction") == 0) {
       ButtonAction parsed;
       if (!parseButtonAction(value, parsed)) {
@@ -198,8 +214,9 @@ bool equalAction(const ButtonAction &a, const ButtonAction &b) {
 }
 }
 bool equalDeviceConfig(const DeviceConfig &a, const DeviceConfig &b) {
-  return a.pointerSensitivity == b.pointerSensitivity && a.middleSensitivity == b.middleSensitivity &&
-    a.invertX == b.invertX && a.invertY == b.invertY &&
+  return a.pointerSensitivity == b.pointerSensitivity && a.wheelSensitivityX == b.wheelSensitivityX &&
+    a.wheelSensitivityY == b.wheelSensitivityY && a.wheelInvertX == b.wheelInvertX && a.wheelInvertY == b.wheelInvertY &&
+    a.pointerInvertX == b.pointerInvertX && a.pointerInvertY == b.pointerInvertY &&
     equalAction(a.leftAction, b.leftAction) && equalAction(a.middleAction, b.middleAction) &&
     equalAction(a.rightAction, b.rightAction);
 }
