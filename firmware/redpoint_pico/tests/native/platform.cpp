@@ -12,7 +12,7 @@ uint8_t flashImage[4096];
 unsigned writes, resyncs, ledShows;
 uint32_t ledColor;
 uint32_t ledColorAtCommit;
-std::vector<std::array<int, 3>> mouseReports;
+std::vector<std::array<int, 5>> mouseReports;
 std::vector<std::array<uint8_t, 8>> keyReports;
 extern "C" uint32_t redpoint_platform_millis(void) { return now; }
 extern "C" uint32_t redpoint_irq_save(void) { return 0; }
@@ -37,9 +37,9 @@ extern "C" bool redpoint_storage_commit(const uint8_t *record, size_t size) {
   if (corruptCommit) flashImage[12] ^= 1;
   return true;
 }
-extern "C" bool redpoint_mouse_send(uint8_t b, int8_t x, int8_t y, int8_t, int8_t) {
+extern "C" bool redpoint_mouse_send(uint8_t b, int8_t x, int8_t y, int8_t wheel, int8_t pan) {
   if (!hidCanSend) return false;
-  mouseReports.push_back({b, x, y}); return true;
+  mouseReports.push_back({b, x, y, wheel, pan}); return true;
 }
 extern "C" bool redpoint_keyboard_send(uint8_t mods, const uint8_t keys[6]) {
   if (!hidCanSend) return false;

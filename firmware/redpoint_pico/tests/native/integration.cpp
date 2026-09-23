@@ -124,6 +124,7 @@ static std::string bodyOf(const std::string &wire) {
 int main(int argc, char **argv) {
   assert(argc == 3); // Configurator directory, output GET capture.
   runHardwareTests();
+  runScrollTests();
   testReset(); lwip_init();
   ip4_addr_t ip, mask, gw;
   IP4_ADDR(&ip, 169, 254, 7, 1); IP4_ADDR(&mask, 255, 255, 0, 0); IP4_ADDR(&gw, 0, 0, 0, 0);

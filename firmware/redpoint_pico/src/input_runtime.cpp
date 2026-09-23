@@ -14,6 +14,7 @@ volatile uint32_t lastByteMs, dropped;
 volatile bool haveLastByte;
 uint8_t packet[3], packetIndex;
 bool synced;
+bool scrollMode;
 float pointerAccX, pointerAccY, scrollAccX, scrollAccY;
 struct Button { ButtonAction active; bool raw, stable; uint32_t changedAt; };
 Button buttons[3];
@@ -52,18 +53,20 @@ void move(uint8_t xb, uint8_t yb) {
   if (config.invertX) x = -x;
   if (config.invertY) y = -y;
   int16_t outX, outY;
-  if (mouseActionHeld(MouseButtonCode::Middle)) {
+  if (scrollMode) {
     pointerAccX = pointerAccY = 0;
     scrollAccX += x * config.middleSensitivity; scrollAccY += y * config.middleSensitivity;
     outX = (int16_t)scrollAccX; outY = (int16_t)scrollAccY;
+    // Match pointer saturation: retain fractions, discard excess whole ticks.
     scrollAccX -= outX; scrollAccY -= outY;
+    redpoint_hid_scroll((int8_t)clamp(outY), (int8_t)clamp(outX));
   } else {
     pointerAccX += x * config.pointerSensitivity; pointerAccY += y * config.pointerSensitivity;
     outX = (int16_t)pointerAccX; outY = (int16_t)pointerAccY;
     pointerAccX -= outX; pointerAccY -= outY;
     scrollAccX = scrollAccY = 0;
+    redpoint_hid_motion((int8_t)clamp(outX), (int8_t)clamp(outY));
   }
-  redpoint_hid_motion((int8_t)clamp(outX), (int8_t)clamp(outY));
 }
 }
 extern "C" void redpoint_input_edge(bool bit, uint32_t now) {
@@ -89,6 +92,7 @@ extern "C" void redpoint_input_init(void) {
     // Like Arduino's startup latch: USB output waits for enumeration in the backend.
     if (pressed) pressButtonAction(buttons[i].active, action(i));
   }
+  scrollMode = mouseActionHeld(MouseButtonCode::Middle);
 }
 extern "C" void redpoint_input_config_changed(void) {
   pointerAccX = pointerAccY = scrollAccX = scrollAccY = 0;
@@ -104,6 +108,12 @@ extern "C" void redpoint_input_post_flash(void) {
 extern "C" uint32_t redpoint_input_dropped(void) { return dropped; }
 extern "C" void redpoint_input_task(void) {
   updateButtons();
+  const bool middle = mouseActionHeld(MouseButtonCode::Middle);
+  if (middle != scrollMode) {
+    // Reset even if no packet arrived during a short hold/release interval.
+    redpoint_input_config_changed();
+    scrollMode = middle;
+  }
   Ps2Byte b;
   // Bound a busy producer; network/CDC must regain main-loop ownership.
   for (unsigned budget = 0; budget < FIFO_SIZE && pop(b); ++budget) {

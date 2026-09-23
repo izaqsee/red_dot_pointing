@@ -1,10 +1,10 @@
-# RedPoint RevA Pico SDK — Milestone C
+# RedPoint RevA Pico SDK — Milestone C.1
 
 Independent RP2040 target: current TinyUSB CDC-NCM + CDC ACM Serial + two HID
-interfaces. Milestones A/B are hardware-verified and their USB/network/HTTP/frontend
+interfaces. Milestones A/B/C are hardware-verified and their USB/network/HTTP/frontend
 architecture is frozen. Milestone C adds GPIO12/13 TrackPoint PS/2, GPIO3/2/4
 physical buttons, TinyUSB input reports, persistent config and GPIO23 WS2812.
-See [MILESTONE_C.md](MILESTONE_C.md) for layout, intentional differences, tests,
+See [MILESTONE_C1.md](MILESTONE_C1.md) for native Middle-held Wheel/Pan scrolling and current validation. See [MILESTONE_C.md](MILESTONE_C.md) for the historical C layout, intentional differences, tests,
 hardware validation and the complete change list. [MILESTONE_B.md](MILESTONE_B.md)
 is the historical B report.
 
@@ -124,9 +124,9 @@ that the UF2 is RP2040 format with a payload matching the generated binary.
 Build outputs: `build/redpoint_reva.{elf,elf.map,bin,hex,uf2}`.
 These commands do not upload or access a USB device.
 
-Milestone C build: Flash **136,900 B / 16,380 KiB available (0.82%)**,
-RAM **41,568 B / 256 KiB (15.86%)**, plus **4,096 B** Scratch Y stack reservation.
-UF2 **273,920 B**. Allocation is a linker measurement, not runtime high-water use.
+Milestone C.1 build: Flash **137,020 B / 16,380 KiB available (0.82%)**,
+RAM **41,824 B / 256 KiB (15.86%)**, plus **4,096 B** Scratch Y stack reservation.
+UF2 **274,432 B**. Allocation is a linker measurement, not runtime high-water use.
 The config sector at XIP **0x10FFF000–0x10FFFFFF** is not included in ELF/UF2.
 
 ## Hardware acceptance and frozen A/B baseline
@@ -155,12 +155,12 @@ Check `ipconfig` for host 169.254/16 and no gateway provided by this device; ope
 stability, HID boot/report protocol, and iPad link-local access with Wi-Fi retained.
 USB descriptor analysis and a successful build do not establish hardware success.
 
-Milestone C physical input, Flash persistence and WS2812 need on-device validation.
+Milestone C physical input, Flash persistence and WS2812 are user-confirmed. C.1 native scrolling needs on-device validation.
 Power draw/suspend compliance,
 runtime stack/heap high-water marks, long-running network throughput, unique MACs
 and Windows compatibility across OS versions remain unverified.
 
 ## Files
 
-See [MILESTONE_C.md](MILESTONE_C.md) for the current change list. Original reference
+See [MILESTONE_C.md](MILESTONE_C.md) for the historical C change list; [MILESTONE_C1.md](MILESTONE_C1.md) lists current changes. Original reference
 licenses are retained in LICENSE.reference and the adapted source files.

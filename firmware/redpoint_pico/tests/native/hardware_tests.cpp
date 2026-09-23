@@ -26,9 +26,9 @@ static void repairCRC(uint8_t *data, unsigned length) {
 }
 void runHardwareTests(void) {
   testReset(); testPacket(3, -2);
-  assert((mouseReports.back() == std::array<int,3>{0,-2,3}));
+  assert((mouseReports.back() == std::array<int,5>{0,-2,3,0,0}));
   command("SET invertX 1"); command("SET invertY 1"); testPacket(3, -2);
-  assert((mouseReports.back() == std::array<int,3>{0,2,-3}));
+  assert((mouseReports.back() == std::array<int,5>{0,2,-3,0,0}));
   testReset(); command("SET pointerSensitivity 0.5");
   testPacket(1, 1); assert(mouseReports.back()[1] == 0);
   testPacket(1, 1); assert(mouseReports.back()[1] == 1);
@@ -37,7 +37,7 @@ void runHardwareTests(void) {
   testPacket(1, 1); command("SET pointerSensitivity 0.5"); testPacket(1, 1);
   assert(mouseReports.back()[1] == 0); // main-loop change resets fractions
   command("SET pointerSensitivity 10"); testPacket(127, -128);
-  assert((mouseReports.back() == std::array<int,3>{0,-127,127}));
+  assert((mouseReports.back() == std::array<int,5>{0,-127,127,0,0}));
   command("SET pointerSensitivity 0.5"); testPacket(1, 1); command("RESET");
   command("SET pointerSensitivity 0.5"); testPacket(1,1); assert(mouseReports.back()[1] == 0);
 
@@ -72,9 +72,9 @@ void runHardwareTests(void) {
   button(0,true); button(2,true); button(0,false);
   assert(mouseActionHeld(MouseButtonCode::Middle));
   command("SET middleSensitivity 0.5"); command("SET pointerSensitivity 2");
-  testPacket(2,2); assert(mouseReports.back()[1] == 1); // logical, not physical middle
-  testPacket(1,1); assert(mouseReports.back()[1] == 0);
-  command("SET middleSensitivity 0.5"); testPacket(1,1); assert(mouseReports.back()[1] == 0);
+  testPacket(2,2); assert((mouseReports.back() == std::array<int,5>{0,0,0,1,1})); // logical Middle scroll
+  testPacket(1,1); assert(mouseReports.back()[4] == 0);
+  command("SET middleSensitivity 0.5"); testPacket(1,1); assert(mouseReports.back()[4] == 0);
   button(2,false); testPacket(2,2); assert(mouseReports.back()[1] == 4);
   command("SET middleAction disabled"); button(1,true); testPacket(2,2);
   assert(mouseReports.back()[1] == 4); button(1,false);
