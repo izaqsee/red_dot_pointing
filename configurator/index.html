@@ -12,107 +12,104 @@
 </head>
 <body>
   <main>
-    <header class="page-header">
-      <div class="brand"><span class="red-point" aria-hidden="true"></span> REDPOINT <span class="edition">DEVICE TOOLS / 01</span></div>
-      <h1>RedPoint Configurator<span class="title-dot">.</span></h1>
-      <p class="intro">手元の動きに、ちょうどいい感度を。USB接続したデバイスに設定を反映します。</p>
-    </header>
-
-    <section class="card connection" aria-labelledby="connection-title">
-      <div>
-        <h2 id="connection-title">Connection</h2>
-        <p id="connection-status" class="status" data-state="disconnected" role="status">Disconnected</p>
-        <p id="port-info" class="muted">USB Serial · 115200 baud</p>
-      </div>
+    <h1 class="sr-only">RedPoint Configurator</h1>
+    <header class="toolbar" aria-label="Connection and settings">
       <div class="connection-actions">
+        <span id="connection-status" class="status" data-state="disconnected" role="status">Disconnected</span>
         <button id="connect" class="primary" type="button">Connect</button>
         <button id="disconnect" type="button" disabled>Disconnect</button>
       </div>
-    </section>
+      <div class="action-buttons">
+        <span id="save-status" role="status" aria-live="polite">—</span>
+        <button id="reset" type="button" disabled>Reset</button>
+        <button id="save" class="primary" type="button" disabled>Save</button>
+      </div>
+      <p id="port-info" class="sr-only">USB Serial · 115200 baud</p>
+    </header>
     <p id="message" class="message" role="status" aria-live="polite">RedPointを確認しています…</p>
-
+    <div class="settings-grid">
     <section class="card" aria-labelledby="pointer-title">
-      <div class="section-heading"><h2 id="pointer-title">Pointer</h2><span class="tag">LIVE CONFIGURATION</span></div>
+      <div class="section-heading"><h2 id="pointer-title">Pointer</h2></div>
       <fieldset id="pointer-controls" disabled>
         <legend class="sr-only">Pointer settings</legend>
         <div class="sensitivity">
-          <div class="control-heading"><label for="pointerSensitivity">Sensitivity</label><output id="pointerSensitivity-value" for="pointerSensitivity">—</output></div>
-          <p class="hint">通常時のポインタ感度</p>
+          <label for="pointerSensitivity">Sensitivity</label>
           <input id="pointerSensitivity" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="pointerSensitivity-confirmed">
-          <div class="range-labels"><span>0.00×</span><span>10.00×</span></div>
-          <p id="pointerSensitivity-confirmed" class="confirmed">デバイス確認値: —</p>
+          <output id="pointerSensitivity-value" for="pointerSensitivity">—</output>
+          <p id="pointerSensitivity-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
         </div>
         <div class="axes">
-          <div><label class="checkbox-label"><input id="pointerInvertX" type="checkbox" aria-describedby="pointerInvertX-confirmed"><span>Invert X<small>左右を反転</small></span></label><p id="pointerInvertX-confirmed" class="confirmed">デバイス確認値: —</p></div>
-          <div><label class="checkbox-label"><input id="pointerInvertY" type="checkbox" aria-describedby="pointerInvertY-confirmed"><span>Invert Y<small>上下を反転</small></span></label><p id="pointerInvertY-confirmed" class="confirmed">デバイス確認値: —</p></div>
+          <div><label class="checkbox-label"><input id="pointerInvertX" type="checkbox" aria-describedby="pointerInvertX-confirmed"><span>Invert X</span></label><p id="pointerInvertX-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
+          <div><label class="checkbox-label"><input id="pointerInvertY" type="checkbox" aria-describedby="pointerInvertY-confirmed"><span>Invert Y</span></label><p id="pointerInvertY-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
         </div>
       </fieldset>
     </section>
 
     <section class="card" aria-labelledby="wheel-title">
-      <div class="section-heading"><h2 id="wheel-title">Wheel</h2><span class="tag">LIVE CONFIGURATION</span></div>
+      <div class="section-heading"><h2 id="wheel-title">Wheel</h2></div>
       <fieldset id="wheel-controls" disabled>
         <legend class="sr-only">Wheel settings</legend>
         <div class="sensitivity">
-          <div class="control-heading"><label for="wheelSensitivityX">Horizontal Sensitivity</label><output id="wheelSensitivityX-value" for="wheelSensitivityX">—</output></div>
-          <p class="hint">Middle割当ボタンを押している間の左右スクロール感度。0で無効</p>
+          <label for="wheelSensitivityX">Horizontal</label>
           <input id="wheelSensitivityX" type="range" min="0" max="10" step="0.01" value="0.4" aria-describedby="wheelSensitivityX-confirmed">
-          <div class="range-labels"><span>0.00×</span><span>10.00×</span></div>
-          <p id="wheelSensitivityX-confirmed" class="confirmed">デバイス確認値: —</p>
+          <output id="wheelSensitivityX-value" for="wheelSensitivityX">—</output>
+          <p id="wheelSensitivityX-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
         </div>
         <div class="sensitivity">
-          <div class="control-heading"><label for="wheelSensitivityY">Vertical Sensitivity</label><output id="wheelSensitivityY-value" for="wheelSensitivityY">—</output></div>
-          <p class="hint">Middle割当ボタンを押している間の上下スクロール感度。0で無効</p>
+          <label for="wheelSensitivityY">Vertical</label>
           <input id="wheelSensitivityY" type="range" min="0" max="10" step="0.01" value="0.4" aria-describedby="wheelSensitivityY-confirmed">
-          <div class="range-labels"><span>0.00×</span><span>10.00×</span></div>
-          <p id="wheelSensitivityY-confirmed" class="confirmed">デバイス確認値: —</p>
+          <output id="wheelSensitivityY-value" for="wheelSensitivityY">—</output>
+          <p id="wheelSensitivityY-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
         </div>
         <div class="axes">
-          <div><label class="checkbox-label"><input id="wheelInvertX" type="checkbox" aria-describedby="wheelInvertX-confirmed"><span>Invert X<small>左右を反転</small></span></label><p id="wheelInvertX-confirmed" class="confirmed">デバイス確認値: —</p></div>
-          <div><label class="checkbox-label"><input id="wheelInvertY" type="checkbox" aria-describedby="wheelInvertY-confirmed"><span>Invert Y<small>上下を反転</small></span></label><p id="wheelInvertY-confirmed" class="confirmed">デバイス確認値: —</p></div>
+          <div><label class="checkbox-label"><input id="wheelInvertX" type="checkbox" aria-describedby="wheelInvertX-confirmed"><span>Invert X</span></label><p id="wheelInvertX-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
+          <div><label class="checkbox-label"><input id="wheelInvertY" type="checkbox" aria-describedby="wheelInvertY-confirmed"><span>Invert Y</span></label><p id="wheelInvertY-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
         </div>
       </fieldset>
     </section>
 
     <section class="card buttons-card" aria-labelledby="buttons-title">
-      <div class="section-heading"><h2 id="buttons-title">Buttons</h2><span class="tag">PHYSICAL BUTTON MAPPING</span></div>
-      <p id="buttons-support" class="hint">接続後に割当を取得します。</p>
+      <div class="section-heading"><h2 id="buttons-title">Buttons</h2></div>
+      <p id="buttons-support" class="sr-only">接続後に割当を取得します。</p>
       <fieldset id="button-controls" disabled>
         <legend class="sr-only">Button actions</legend>
         <div class="button-row">
-          <label for="leftAction">Left physical button</label>
-          <p id="leftAction-confirmed" class="confirmed">デバイス確認値: —</p>
-          <p id="leftAction-pending" class="hint"></p>
+          <label for="leftAction">Left</label>
+          <p id="leftAction-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+          <p id="leftAction-pending" class="pending"></p>
           <div class="button-row-controls">
             <select id="leftAction" aria-label="Left action">
               <option value="mouse:left">Left Click</option><option value="mouse:middle">Middle (hold to scroll)</option><option value="mouse:right">Right Click</option>
-              <option value="disabled">Disabled</option><option value="shortcut" disabled>Keyboard Shortcut</option>
+              <option value="disabled">Disabled</option><option value="shortcut">Keyboard Shortcut</option>
             </select>
-            <button id="leftAction-record" type="button">Record Shortcut<span class="sr-only"> for Left</span></button>
+            <div id="leftAction-shortcut" class="shortcut-controls" hidden><span id="leftAction-shortcut-value"></span>
+            <button id="leftAction-record" type="button">Record<span class="sr-only"> shortcut for Left</span></button></div>
           </div>
         </div>
         <div class="button-row">
-          <label for="middleAction">Middle physical button</label>
-          <p id="middleAction-confirmed" class="confirmed">デバイス確認値: —</p>
-          <p id="middleAction-pending" class="hint"></p>
+          <label for="middleAction">Middle</label>
+          <p id="middleAction-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+          <p id="middleAction-pending" class="pending"></p>
           <div class="button-row-controls">
             <select id="middleAction" aria-label="Middle action">
               <option value="mouse:left">Left Click</option><option value="mouse:middle">Middle (hold to scroll)</option><option value="mouse:right">Right Click</option>
-              <option value="disabled">Disabled</option><option value="shortcut" disabled>Keyboard Shortcut</option>
+              <option value="disabled">Disabled</option><option value="shortcut">Keyboard Shortcut</option>
             </select>
-            <button id="middleAction-record" type="button">Record Shortcut<span class="sr-only"> for Middle</span></button>
+            <div id="middleAction-shortcut" class="shortcut-controls" hidden><span id="middleAction-shortcut-value"></span>
+            <button id="middleAction-record" type="button">Record<span class="sr-only"> shortcut for Middle</span></button></div>
           </div>
         </div>
         <div class="button-row">
-          <label for="rightAction">Right physical button</label>
-          <p id="rightAction-confirmed" class="confirmed">デバイス確認値: —</p>
-          <p id="rightAction-pending" class="hint"></p>
+          <label for="rightAction">Right</label>
+          <p id="rightAction-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+          <p id="rightAction-pending" class="pending"></p>
           <div class="button-row-controls">
             <select id="rightAction" aria-label="Right action">
               <option value="mouse:left">Left Click</option><option value="mouse:middle">Middle (hold to scroll)</option><option value="mouse:right">Right Click</option>
-              <option value="disabled">Disabled</option><option value="shortcut" disabled>Keyboard Shortcut</option>
+              <option value="disabled">Disabled</option><option value="shortcut">Keyboard Shortcut</option>
             </select>
-            <button id="rightAction-record" type="button">Record Shortcut<span class="sr-only"> for Right</span></button>
+            <div id="rightAction-shortcut" class="shortcut-controls" hidden><span id="rightAction-shortcut-value"></span>
+            <button id="rightAction-record" type="button">Record<span class="sr-only"> shortcut for Right</span></button></div>
           </div>
         </div>
       </fieldset>
@@ -121,15 +118,9 @@
         <p id="recorder-preview" role="status" aria-live="polite"></p>
         <button id="recorder-cancel" type="button">Cancel recording</button>
       </div>
-      <p class="hint">1つのキー＋Ctrl / Shift / Alt / Metaを記録します。Escapeも割当対象です。Alt+Tab / Win+L / Ctrl+Alt+Deleteなど、OSが捕捉する組合せは記録できない場合があります。</p>
     </section>
 
-    <section class="card actions" aria-labelledby="actions-title">
-      <div><h2 id="actions-title">Actions</h2><p class="hint">変更はすぐに反映されます。再起動後も使うにはSave。Resetだけでは保存内容は変わりません。</p></div>
-      <div class="action-buttons"><button id="reset" type="button" disabled>Reset to defaults</button><button id="save" class="primary" type="button" disabled>Save</button><span id="save-status" role="status" aria-live="polite">—</span></div>
-      <p class="hint">再接続直後は保存状態未確認です。Saveの成功応答で保存済みを確認します。保存中はデバイスを動かさず、USBを抜かないでください。</p>
-    </section>
-    <footer><span class="local-dot" aria-hidden="true"></span> Local only · デバイスデータの外部送信なし <span class="footer-note">Web Serial / Persistent settings</span></footer>
+    </div>
     <noscript><p class="message" data-kind="error">Configuratorを使うにはJavaScriptを有効にしてください。</p></noscript>
   </main>
 </body>

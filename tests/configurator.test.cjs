@@ -1050,3 +1050,36 @@ test("C.2 HTML wires controls into Pointer/Wheel/Buttons with unique IDs", () =>
   assert.ok(html.indexOf('id="pointer-title"') < html.indexOf('id="wheel-title"'));
   assert.ok(html.indexOf('id="wheel-title"') < html.indexOf('id="buttons-title"'));
 });
+
+test("C.3 shortcut controls expand only for keyboard choices without changing capture behavior", async () => {
+  const ui=setupUI(true); const port=await ui.connect();
+  for(const key of ["leftAction","middleAction","rightAction"]) assert.equal(ui.el(`${key}-shortcut`).hidden,true);
+  assert.equal(ui.el("message").hidden,true);
+  ui.el("leftAction").value="shortcut"; ui.el("leftAction").fire("change");
+  assert.equal(ui.el("leftAction-shortcut").hidden,false);
+  assert.equal(ui.el("middleAction-shortcut").hidden,true);
+  assert.deepEqual(port.commands,["GET"]); // choosing a UI category is not an invalid SET
+  ui.el("leftAction-record").fire("click");
+  ui.doc.fire("keydown",keyEvent("KeyX",{ctrlKey:true,shiftKey:true}));
+  await until(()=>port.config.leftAction==="key:03:1B");
+  assert.equal(ui.el("leftAction-shortcut").hidden,false);
+  assert.match(ui.el("leftAction-shortcut-value").textContent,/Ctrl \+ Shift \+ X/);
+  ui.el("leftAction").value="disabled"; ui.el("leftAction").fire("change");
+  await until(()=>port.config.leftAction==="disabled");
+  assert.equal(ui.el("leftAction-shortcut").hidden,true);
+  ui.el("rightAction").value="shortcut"; ui.el("rightAction").fire("change");
+  ui.el("rightAction-record").fire("click"); ui.el("recorder-cancel").fire("click");
+  assert.equal(port.config.rightAction,"mouse:right");
+  ui.el("reset").fire("click"); await until(()=>!ui.el("reset").disabled);
+  assert.equal(ui.el("rightAction-shortcut").hidden,true);
+  await ui.disconnect();
+});
+
+test("C.3 compact toolbar and exactly three cards preserve all controls", () => {
+  const html=require("node:fs").readFileSync(require("node:path").join(__dirname,"../configurator/index.html"),"utf8");
+  const toolbar=html.match(/<header class="toolbar"[\s\S]*?<\/header>/)[0];
+  for(const id of ["connection-status","connect","disconnect","reset","save","save-status"]) assert.ok(toolbar.includes(`id="${id}"`));
+  assert.equal((html.match(/<section class="card/g)||[]).length,3);
+  assert.ok(!html.includes('class="brand"') && !html.includes('class="intro"'));
+  for(const key of ["leftAction","middleAction","rightAction"]) assert.ok(html.includes(`id="${key}-shortcut" class="shortcut-controls" hidden`));
+});

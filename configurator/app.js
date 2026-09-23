@@ -346,6 +346,7 @@
     let saved = null; // Only a SAVE success in this connection establishes this.
     let changedSinceSync = false;
     let recordingKey = null;
+    const shortcutChoices = new Set(); // UI-only selection before a key is recorded.
     const recorder = createShortcutRecorder(document, {
       preview(text, error) {
         byId("recorder-preview").textContent = text;
@@ -378,6 +379,9 @@
     function message(text, kind = "info") {
       byId("message").textContent = text;
       byId("message").dataset.kind = kind;
+      // Routine confirmations are already represented by the controls/status.
+      byId("message").hidden = kind === "info" &&
+        (text.startsWith("設定を取得しました。") || text.startsWith("デバイスの応答を確認しました。"));
     }
     function format(value) {
       return typeof value === "boolean" ? (value ? "On" : "Off") :
@@ -418,12 +422,16 @@
       for (const key of ACTION_KEYS) {
         const draft = drafts.get(key);
         const value = draft ? draft.value : confirmed?.[key];
-        byId(key).value = typeof value === "string" && value.startsWith("key:") ? "shortcut" : value || "disabled";
+        const keyboard = shortcutChoices.has(key) || (typeof value === "string" && value.startsWith("key:"));
+        byId(key).value = keyboard ? "shortcut" : value || "disabled";
+        byId(`${key}-shortcut`).hidden = !keyboard;
+        byId(`${key}-shortcut-value`).textContent = typeof value === "string" && value.startsWith("key:") ? actionLabel(value) : "Not recorded";
         byId(`${key}-confirmed`).textContent = `デバイス確認値: ${actionLabel(confirmed?.[key])}`;
         byId(`${key}-pending`).textContent = draft ? `反映待ち: ${actionLabel(draft.value)}` : "";
       }
     }
     function discardDrafts() {
+      shortcutChoices.clear();
       stopRecording();
       clearTimeout(editTimer);
       editTimer = null;
@@ -679,7 +687,10 @@
     }
     for (const key of ACTION_KEYS) {
       byId(key).addEventListener("change", () => {
-        if (!recordingKey) proposeAction(key, byId(key).value);
+        if (recordingKey || connectionState !== "connected" || !hasActions() || resetRequested || saveRequested) return;
+        const value = byId(key).value;
+        if (value === "shortcut") { shortcutChoices.add(key); render(); }
+        else { shortcutChoices.delete(key); proposeAction(key, value); }
       });
       byId(`${key}-record`).addEventListener("click", () => {
         if (connectionState !== "connected" || !hasActions() || resetRequested || saveRequested || recordingKey) return;
