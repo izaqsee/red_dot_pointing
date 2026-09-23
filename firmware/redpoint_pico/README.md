@@ -1,8 +1,10 @@
-# RedPoint RevA Pico SDK — Milestone A
+# RedPoint RevA Pico SDK — Milestone B
 
 Independent RP2040 target: current TinyUSB CDC-NCM + CDC ACM Serial + two HID
-interfaces. This target does not link the Arduino firmware, configuration command
-core, or Configurator. PS/2, EEPROM, WS2812 and physical input handling are deferred.
+interfaces. Milestone A USB/network architecture is hardware-verified and frozen.
+Milestone B adds the existing Configurator and shared command core over HTTP/CDC.
+PS/2, EEPROM/Flash persistence, WS2812 and physical input handling are deferred.
+See [MILESTONE_B.md](MILESTONE_B.md) for implementation, tests and hardware steps.
 
 ## Dependencies and architecture
 
@@ -26,7 +28,7 @@ board definition; external peripheral pin assignments are not ported. SDK USB an
 UART stdio are disabled; CDC belongs exclusively to the application. The reference
 BSP still initializes its normal board LED GPIO. No WS2812 driver is included.
 
-The main loop services TinyUSB, lwIP timers, CDC echo and neutral HID reports on
+The main loop services TinyUSB, lwIP timers, CDC commands and neutral HID reports on
 core 0. Network backpressure returns `ERR_MEM` instead of spinning inside lwIP and
 starving the other functions. lwIP allocation failure drops the received frame
 and renews NCM reception. Protocol retransmission/recovery and sustained load
@@ -34,9 +36,9 @@ need hardware testing.
 
 IPv4 is **169.254.7.1**, mask **255.255.0.0**, gateway **0.0.0.0**.
 DHCP and AutoIP clients are disabled; no DHCP server or DNS server is linked.
-The host assigns its own link-local address. The standard lwIP httpd serves a
-small diagnostic page at `/` and `/index.html` from ROM fsdata. There is no
-configuration API at this milestone.
+The host assigns its own link-local address. The standard lwIP httpd serves the
+current Configurator from generated ROM fsdata and handles `POST /api/command`
+through the existing HTTP adapter and `config_command.cpp`. No frontend code changes.
 
 ## USB descriptor allocation
 
@@ -87,8 +89,9 @@ Mouse report protocol sends five bytes (buttons, x, y, wheel, pan); boot protoco
 sends three. Keyboard sends eight bytes and accepts the one-byte LED output via
 control SET_REPORT (no OUT endpoint). `hid.h` exposes nonblocking send functions.
 The diagnostic task sends only zero/neutral reports every 100 ms, without typing,
-moving the pointer, or waking a suspended host. CDC echoes received bytes when
-the terminal opens with DTR asserted; it does not interpret configuration commands.
+moving the pointer, or waking a suspended host. CDC is serviced when
+the terminal opens with DTR asserted. In Milestone B it accepts newline-delimited
+configuration commands through the same core as HTTP; the echo-only task is removed.
 
 ## Build and validation
 
@@ -116,16 +119,18 @@ that the UF2 is RP2040 format with a payload matching the generated binary.
 Build outputs: `build/redpoint_reva.{elf,elf.map,bin,hex,uf2}`.
 These commands do not upload or access a USB device.
 
-Local validation (2026-09-23): MinSizeRel build with GNU Arm 14.2.1 passed with
-no compiler warnings; all five build-check groups passed. Linker memory usage:
-Flash **48,612 B / 2 MiB (2.32%)**, RAM **32,832 B / 256 KiB (12.52%)**, plus
-**2,048 B** stack reservation in Scratch Y. RAM usage includes the linker's
-minimum heap reservation, not a measured runtime high-water mark. UF2 file size
-is **97,280 B** (container overhead included); BIN size is **48,612 B**.
-Use the linker regions for flash/RAM accounting: GNU `size` text also counts
-RAM-resident code and ELF metadata and is not the flash image size.
+Milestone B validation: final MinSizeRel build passed without warnings; Flash
+**130,308 B / 2 MiB (6.21%)**, RAM **39,156 B / 256 KiB (14.94%)**, plus
+**2,048 B** stack reservation in Scratch Y. UF2 size **261,120 B**; BIN size
+**130,308 B**. RAM is linker allocation (including minimum heap reservation),
+not measured runtime usage. Detailed test results are in MILESTONE_B.md.
 
-## Hardware acceptance (not yet executed)
+## Hardware acceptance and frozen Milestone A baseline
+
+User-confirmed on Windows/iPad: composite enumeration, NCM without Code 10,
+Windows HTTP 200, iPad Safari HTTP, and simultaneous iPad Wi-Fi Internet.
+The USB descriptors, endpoints, NCM source and netif configuration are frozen.
+The following checks are retained for Milestone B regression validation.
 
 In Windows Device Manager, use **View → Devices by connection** to identify the
 same `VID_CAFE&PID_4019` composite parent and all four functions:
@@ -133,7 +138,7 @@ same `VID_CAFE&PID_4019` composite parent and all four functions:
 - USB Composite Device: no warning icon.
 - Network adapters: USB NCM / USB NCM Host Device, bound to Windows NCM driver;
   no Code 10. Interface association starts at `MI_00`.
-- Ports (COM & LPT): USB Serial Device (COMx), `MI_02`; terminal echo with DTR.
+- Ports (COM & LPT): USB Serial Device (COMx), `MI_02`; newline-delimited GET/PING commands with DTR.
 - Mice and other pointing devices: HID-compliant mouse, `MI_04`.
 - Keyboards: HID Keyboard Device, `MI_05` (also represented under HID devices).
 
@@ -141,19 +146,16 @@ Friendly names vary by Windows language/version. Confirm parent/MI association
 rather than relying only on displayed names. Verify enumeration after cold attach,
 replug, reboot and suspend/resume; all four functions must remain present together.
 Check `ipconfig` for host 169.254/16 and no gateway provided by this device; open
-`http://169.254.7.1/`. Check concurrent CDC echo and network traffic, Windows NCM
+`http://169.254.7.1/`. Check concurrent CDC commands and network traffic, Windows NCM
 stability, HID boot/report protocol, and iPad link-local access with Wi-Fi retained.
 USB descriptor analysis and a successful build do not establish hardware success.
 
-Before later milestones, port RevA-specific pins/peripherals, real HID input,
-configuration core and Configurator assets/API. Power draw/suspend compliance,
+Before later milestones, port RevA-specific pins/peripherals, real HID input
+and actual persistence with post-flash PS/2 recovery. Power draw/suspend compliance,
 runtime stack/heap high-water marks, long-running network throughput, unique MACs
 and Windows compatibility across OS versions remain unverified.
 
 ## Files
 
-All files added for this target are under `firmware/redpoint_pico/`:
-`CMakeLists.txt`, `.gitignore`, `README.md`, `LICENSE.reference`, `reference.json`,
-`src/main.c`, `src/usb_descriptors.c`, `src/windows_ncm.h`, `src/tusb_config.h`,
-`src/lwipopts.h`, `src/arch/cc.h`, `src/hid.c`, `src/hid.h`, `src/status_fsdata.h`,
-and `tests/check_build.py`. The original licenses are retained for adapted files.
+See [MILESTONE_B.md](MILESTONE_B.md) for the current change list. Original reference
+licenses are retained in LICENSE.reference and the adapted source files.

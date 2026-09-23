@@ -882,6 +882,30 @@ function httpUI(device, serial, secure = false) {
     async close() { el("disconnect").fire("click"); await this.ready("Disconnected"); } };
 }
 
+test("Pico backend captured GET/PING reaches Connected without Serial or secure context",
+  { skip: !process.env.REDPOINT_PICO_GET_RESPONSE }, async t => {
+    const fs = require("node:fs");
+    const capture = process.env.REDPOINT_PICO_GET_RESPONSE;
+    const replies = {
+      GET: fs.readFileSync(capture, "utf8"),
+      PING: fs.readFileSync(capture + ".ping", "utf8")
+    };
+    const calls = [];
+    const ui = httpUI({ async fetch(url, options) {
+      assert.equal(url, "api/command");
+      assert.equal(options.method, "POST");
+      assert.equal(options.mode, "same-origin");
+      const command = options.body.trim();
+      assert.ok(Object.hasOwn(replies, command));
+      calls.push(command);
+      return httpReply(replies[command]);
+    }});
+    t.after(() => ui.close());
+    await ui.ready();
+    assert.equal(ui.el("port-info").textContent, "USB Ethernet · IPv4 Link-Local");
+    assert.deepEqual(calls, ["GET", "PING"]);
+  });
+
 test("HTTP probe works without Serial/secure context and shares GET/SET/RESET/SAVE/PING UI", async t => {
   const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close());
   await ui.ready();

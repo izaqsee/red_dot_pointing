@@ -12,12 +12,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [ROOT / "tests/firmware_config_test.cpp", ROOT / "tests/firmware_actions_test.cpp", ROOT / "tests/firmware_http_test.cpp", ROOT / "firmware/http_lwip/redpoint_httpd.cpp"] + [
     ROOT / "firmware/redpoint" / name
-    for name in ("status_led.cpp", "config.cpp", "config_command.cpp", "config_http.cpp", "config_record.cpp", "config_storage.cpp", "button_action.cpp", "keyboard_mapping.cpp")
+    for name in ("status_led.cpp", "config.cpp", "config_command.cpp", "config_http.cpp", "config_record.cpp", "config_storage.cpp", "button_action.cpp", "button_action_codec.cpp", "keyboard_mapping.cpp")
 ]
 INCLUDES = [ROOT / "tests/firmware_stubs", ROOT / "firmware/redpoint"]
 
 
-def main():
+def main(sources=SOURCES, includes=INCLUDES, definitions=(), arguments=()):
     compiler = os.environ.get("CXX") or next(
         (path for name in ("c++", "g++", "clang++", "cl") if (path := shutil.which(name))), None
     )
@@ -39,10 +39,12 @@ def main():
         binary = build / ("firmware-test.exe" if os.name == "nt" else "firmware-test")
         if Path(compiler).stem.lower() == "cl":
             args = [compiler, "/nologo", "/utf-8", "/EHsc", "/std:c++14", "/Dstrtok_r=strtok_s"]
-            args += [f"/I{path}" for path in INCLUDES] + [str(path) for path in SOURCES] + [f"/Fe:{binary}"]
+            args += [f"/D{value}" for value in definitions]
+            args += [f"/I{path}" for path in includes] + [str(path) for path in sources] + [f"/Fe:{binary}"]
         else:
             args = [compiler, "-std=c++11", "-Wall", "-Wextra", "-pedantic"]
-            args += [f"-I{path}" for path in INCLUDES] + [str(path) for path in SOURCES] + ["-o", str(binary)]
+            args += [f"-D{value}" for value in definitions]
+            args += [f"-I{path}" for path in includes] + [str(path) for path in sources] + ["-o", str(binary)]
         if vcvars:
             # Paths come only from the local toolchain/repo; no user command text.
             script = build / "build.cmd"
@@ -50,7 +52,7 @@ def main():
             subprocess.run(str(script), cwd=build, shell=True, check=True)
         else:
             subprocess.run(args, cwd=build, check=True)
-        subprocess.run([str(binary)], cwd=build, check=True)
+        subprocess.run([str(binary), *map(str, arguments)], cwd=build, check=True)
 
 
 if __name__ == "__main__":

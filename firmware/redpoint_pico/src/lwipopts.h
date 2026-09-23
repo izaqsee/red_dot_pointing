@@ -35,6 +35,7 @@
 // Pulls in tusb_option.h → tusb_config.h, which defines LWIP_HIGH_THROUGHPUT
 // based on the target MCU's SRAM tier.
 #include "tusb_option.h"
+#include "redpoint_http_opts.h"
 
 #ifndef LWIP_HIGH_THROUGHPUT
   #define LWIP_HIGH_THROUGHPUT          0
@@ -76,7 +77,6 @@
 #define LWIP_NETIF_LINK_CALLBACK        1
 
 #define HTTPD_USE_CUSTOM_FSDATA         1
-#define HTTPD_FSDATA_FILE "status_fsdata.h"
 #define LWIP_AUTOIP 0
 
 #define LWIP_MULTICAST_PING             1

@@ -50,6 +50,7 @@ def main():
         build = Path(tmp)
         (build / 'fsdata_redpoint.c').write_text(fsdata.generate(), encoding='ascii')
         options = ['-DLWIP_HTTPD_SUPPORT_POST=1', '-DLWIP_HTTPD_CUSTOM_FILES=1',
+                   '-include', str(ROOT / 'firmware/http_lwip/redpoint_http_opts.h'),
                    '-DLWIP_HTTPD_DYNAMIC_HEADERS=0', '-DLWIP_HTTPD_DYNAMIC_FILE_READ=0',
                    '-DHTTPD_PRECALCULATED_CHECKSUM=0', '-DHTTPD_FSDATA_FILE="fsdata_redpoint.c"',
                    f'-I{build}', f'-I{ROOT / "firmware/redpoint"}']

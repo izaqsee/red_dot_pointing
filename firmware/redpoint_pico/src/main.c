@@ -3,6 +3,7 @@
 #include "bsp/board_api.h"
 #include "tusb.h"
 #include "hid.h"
+#include "config_platform.h"
 #include "lwip/init.h"
 #include "lwip/timeouts.h"
 #include "lwip/sys.h"
@@ -49,18 +50,9 @@ uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
   struct pbuf *p = ref;
   return pbuf_copy_partial(p, dst, p->tot_len, 0);
 }
-static void serial_task(void) {
-  if (!tud_cdc_connected()) return;
-  uint32_t count = TU_MIN(tud_cdc_available(), tud_cdc_write_available());
-  if (count) {
-    uint8_t bytes[64];
-    count = tud_cdc_read(bytes, TU_MIN(count, sizeof(bytes)));
-    tud_cdc_write(bytes, count);
-  }
-  tud_cdc_write_flush();
-}
 int main(void) {
   board_init();
+  redpoint_config_init();
   lwip_init();
   ip4_addr_t ip, mask, gateway;
   IP4_ADDR(&ip, 169, 254, 7, 1);
@@ -78,10 +70,11 @@ int main(void) {
   while (true) {
     tud_task();
     sys_check_timeouts();
-    serial_task();
+    redpoint_config_cdc_task();
     redpoint_hid_task();
   }
 }
 sys_prot_t sys_arch_protect(void) { return 0; }
 void sys_arch_unprotect(sys_prot_t value) { (void)value; }
 uint32_t sys_now(void) { return tusb_time_millis_api(); }
+uint32_t redpoint_platform_millis(void) { return tusb_time_millis_api(); }

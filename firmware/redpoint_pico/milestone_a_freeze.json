@@ -1,0 +1,11 @@
+{
+  "src/usb_descriptors.c": "70f0777d3556aef06eff69955c228bc05429110a200533dad29794da891d2723",
+  "src/windows_ncm.h": "663a9f647ba9fa38feb2751b2a4fff8eb72af703e84415e3c24787e6e925a71b",
+  "src/tusb_config.h": "57bf3ce01a56b881e0875b907a4f17cf45076918d11a73447e8b66797ddf9a2f",
+  "src/hid.c": "9529a360eee33d1d11f0df065b82c452a2d49ccade24387d9dca6283ce2fbe75",
+  "src/hid.h": "ea3d9f8d6d8b2febe03e553fa8ec327f821706d9c4f0fd1b371a71cde9b04be8",
+  "../../configurator/app.js": "db83c72888b2844aa47bc7dc768315336eb8f63600eadbc4cf897ad851e843a1",
+  "../../configurator/index.html": "8cd0e1fd26840e961b98eefdb7f648228d7f55357ec462d85fe5cce6f27f6228",
+  "../../configurator/style.css": "c9d4c0be068befeca50112716d66ab2e7c5a3a122a81f53881201ad0bedd2376",
+  "../../configurator/shortcuts.js": "d33b84c3192edccb690aa7275f9ac00b429cca6566a93fa0974d5f08b2cef642"
+}
