@@ -1,5 +1,9 @@
 # RedPoint Serial configuration protocol
 
+同じcommand／`@CONFIG` framingはUSB Ethernetの`POST /api/command`でも使用します。
+validation・mutation・SAVE・LED更新・response生成は`config_command.cpp`が共通のsource of truthです。
+HTTP transport、body上限、lwIP組込については[USB Ethernet integration](usb-ethernet.md)を参照してください。
+
 ## 接続とフレーミング
 
 USB CDC Serialを使用する。接続設定は115200 baud、8N1、flow controlなし。

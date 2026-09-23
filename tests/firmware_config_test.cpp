@@ -1,3 +1,4 @@
+#include "config_serial.h"
 #include "config.h"
 #include "status_led.h"
 #include "config_record.h"
@@ -17,6 +18,7 @@ bool ledCanShow = true;
 void runStatusTests();
 
 void runActionTests();
+void runHttpTests();
 bool equalAction(const ButtonAction &a, const ButtonAction &b) {
   return a.type == b.type && a.code == b.code && a.modifiers == b.modifiers;
 }
@@ -219,6 +221,7 @@ int main() {
   command(serial, "RESET\n"); command(serial, "SAVE\n");
   assert(loadDeviceConfig(config) && equal(config,DEFAULT_CONFIG));
   runStatusTests();
+  runHttpTests();
   std::cout << "PASS: record validation/fallback, load, runtime-only SET/RESET, SAVE validation/readback/failure/wear\n";
 }
 

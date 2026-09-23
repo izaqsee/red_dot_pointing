@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Arduino.h>
+#include <stddef.h>
 #include "button_action.h"
 
 struct DeviceConfig {
@@ -21,10 +21,13 @@ bool validDeviceConfig(const DeviceConfig &value);
 
 extern DeviceConfig config;
 
-// Main loop only. Returns true when SET/RESET succeeds; clear motion remainders.
-bool pollConfigSerial(Stream &serial);
-
 // Boot baseline includes defaults and logical v1 migration.
 void configSetPersistentBaseline(const DeviceConfig &value);
 bool configUnsaved();
 bool equalDeviceConfig(const DeviceConfig &a, const DeviceConfig &b);
+
+constexpr size_t CONFIG_LINE_CAPACITY = 96;
+struct ConfigResponse { char text[512]; size_t length; };
+// Single main-loop owner only: never execute from IRQ or a concurrent network thread.
+bool executeConfigCommand(const char *data, size_t length, ConfigResponse &response);
+bool takeConfigChange();

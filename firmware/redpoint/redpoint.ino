@@ -1,3 +1,4 @@
+#include "config_serial.h"
 #include <Mouse.h>
 #include <Keyboard.h>
 #include "config.h"
@@ -545,7 +546,8 @@ void loop() {
   }
 
   // FIFO処理後、待機せず固定量だけSerial入力を処理する。
-  if (pollConfigSerial(Serial)) {
+  pollConfigSerial(Serial);
+  if (takeConfigChange()) {
     scrollAccX = scrollAccY = 0.0f;
     pointerAccX = pointerAccY = 0.0f;
   }

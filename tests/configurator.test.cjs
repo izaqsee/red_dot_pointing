@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
+const { parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
 
 const defaults = () => ({ pointerSensitivity: 1, middleSensitivity: 0.4, invertX: false, invertY: false });
 const actionDefaults = () => ({ ...defaults(), leftAction: "mouse:left", middleAction: "mouse:middle", rightAction: "mouse:right" });
@@ -849,4 +849,118 @@ test("getPorts rejection, unsupported API and insecure contexts leave manual gui
   const insecure = autoUI([], { secure: false });
   assert.equal(insecure.serial.discoveries, 0); assert.equal(insecure.el("connect").disabled, true);
   assert.match(insecure.el("message").textContent, /HTTPS/);
+});
+
+
+function httpDevice() {
+  const device = { config: actionDefaults(), calls: [], fail: false, holdSet: false, releases: [] };
+  device.fetch = async (url, options) => {
+    device.calls.push({ url, ...options });
+    assert.equal(url, "api/command");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers["Content-Type"], "text/plain");
+    assert.equal(options.headers["Cache-Control"], "no-store");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.mode, "same-origin");
+    if (device.fail) throw new Error("network lost");
+    const [command, key, value] = options.body.trim().split(" ");
+    if (device.reject) { device.reject = false; return httpReply('@CONFIG {"ok":false,"error":"INVALID_VALUE"}\n'); }
+    if (command === "SET") device.config[key] = key.endsWith("Action") ? value : key.startsWith("invert") ? value === "1" : Number(value);
+    if (command === "RESET") device.config = actionDefaults();
+    const reply = httpReply(command === "PING" ? '@CONFIG {"ok":true,"command":"PING"}\n' : response(command, { ...device.config }));
+    if (command === "SET" && device.holdSet) return new Promise(resolve => device.releases.push(() => resolve(reply)));
+    return reply;
+  };
+  return device;
+}
+function httpReply(text, status = 200) { return { ok: status >= 200 && status < 300, status, async text() { return text; } }; }
+function httpUI(device, serial, secure = false) {
+  const doc = fakeDocument();
+  mount(doc, serial, secure, { fetch: device.fetch });
+  const el = id => doc.getElementById(id);
+  return { el, async ready(state = "Connected") { await until(() => el("connection-status").textContent === state, 3000); },
+    async close() { el("disconnect").fire("click"); await this.ready("Disconnected"); } };
+}
+
+test("HTTP probe works without Serial/secure context and shares GET/SET/RESET/SAVE/PING UI", async t => {
+  const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close());
+  await ui.ready();
+  assert.equal(ui.el("port-info").textContent, "USB Ethernet · IPv4 Link-Local");
+  assert.deepEqual(device.calls.map(c => c.body.trim()), ["GET", "PING"]);
+  ui.el("invertX").checked = true; ui.el("invertX").fire("input"); ui.el("save").fire("click");
+  await until(() => ui.el("save-status").textContent === "Saved");
+  assert.equal(device.config.invertX, true);
+  ui.el("reset").fire("click"); await until(() => device.calls.some(c => c.body.trim() === "RESET"));
+  assert.equal(device.config.invertX, false);
+});
+
+test("HTTP failure falls back to existing authorized Serial discovery, never opens picker", async t => {
+  const port = fakePort(); let discoveries = 0;
+  const serial = { async getPorts() { discoveries++; return [port]; }, requestPort() { throw new Error("unexpected picker"); }, addEventListener() {} };
+  const ui = httpUI({ fetch: async () => httpReply("Not found", 404) }, serial, true); t.after(() => ui.close());
+  await ui.ready(); assert.equal(discoveries, 1); assert.equal(port.openCalls, 1);
+  assert.match(ui.el("port-info").textContent, /USB 2e8a/);
+});
+
+test("malformed HTTP probe times out into Serial fallback; valid HTTP bypasses Serial", async t => {
+  let discoveries = 0;
+  const serial = { async getPorts() { discoveries++; return []; }, addEventListener() {} };
+  const ui = httpUI({ fetch: async () => httpReply('@DEBUG hi\n@CONFIG {oops}\n' + response("GET", { invertX: true })) }, serial, true);
+  await ui.ready("Disconnected"); assert.equal(discoveries, 1); assert.equal(ui.el("connect").disabled, false);
+  const good = httpUI(httpDevice(), serial, true); t.after(() => good.close());
+  await good.ready(); assert.equal(discoveries, 1);
+});
+
+test("HTTP protocol errors remain protocol errors; fetch/HTTP errors are transport failures", async () => {
+  const device = httpDevice(); const active = createHttpConnection(device.fetch);
+  await active.openAndSync(); device.reject = true;
+  await assert.rejects(active.protocol.request("SET invertX 1"), error => error.code === "INVALID_VALUE");
+  assert.equal(active.protocol.isIdle(), true);
+  device.fail = true; await assert.rejects(active.protocol.request("GET"), /WRITE_FAILED.*network lost/);
+  await active.close();
+  const failed = createHttpConnection(async () => httpReply("bad", 503));
+  await assert.rejects(failed.openAndSync(), /WRITE_FAILED.*503/); await failed.close();
+});
+
+test("late HTTP GET cannot complete a newer GET resync, even if fetch ignores abort", async () => {
+  const resolvers = [];
+  const active = createHttpConnection(() => new Promise(resolve => resolvers.push(resolve)), 35);
+  await assert.rejects(active.openAndSync(), /TIMEOUT/);
+  let done = false;
+  const retry = active.protocol.request("GET", { resync: true }).then(value => { done = true; return value; });
+  await until(() => resolvers.length === 2);
+  resolvers[0](httpReply(response("GET", { ...actionDefaults(), pointerSensitivity: 9 })));
+  await sleep(5); assert.equal(done, false);
+  resolvers[1](httpReply(response("GET", actionDefaults())));
+  assert.equal((await retry).pointerSensitivity, 1);
+  await active.close();
+});
+
+test("HTTP SET timeout uses existing GET resync and ignores late SET body", async t => {
+  const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close()); await ui.ready();
+  device.holdSet = true;
+  ui.el("invertX").checked = true; ui.el("invertX").fire("input");
+  await until(() => device.calls.filter(c => c.body.trim() === "GET").length === 2, 2800);
+  await ui.ready(); assert.match(ui.el("invertX-confirmed").textContent, /On/);
+  device.releases[0](); await sleep(10);
+  assert.equal(ui.el("connection-status").textContent, "Connected");
+});
+
+test("HTTP Disconnect aborts pending fetch; reconnect starts a new GET without permission", async t => {
+  const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close()); await ui.ready();
+  device.holdSet = true; ui.el("invertY").checked = true; ui.el("invertY").fire("input");
+  await until(() => device.releases.length === 1);
+  const old = device.calls.find(c => c.body.startsWith("SET"));
+  await ui.close(); assert.equal(old.signal.aborted, true);
+  ui.el("connect").fire("click"); await ui.ready();
+  device.releases[0](); await sleep(10);
+  assert.equal(ui.el("connection-status").textContent, "Connected");
+  assert.equal(device.calls.filter(c => c.body.trim() === "GET").length, 2);
+});
+
+test("HTTP fetch loss disconnects and keeps HTTP reconnect available on iPad", async t => {
+  const device = httpDevice(); const ui = httpUI(device); t.after(() => ui.close()); await ui.ready();
+  device.fail = true; ui.el("save").fire("click"); await ui.ready("Disconnected");
+  assert.equal(ui.el("connect").disabled, false);
+  device.fail = false; ui.el("connect").fire("click"); await ui.ready();
 });

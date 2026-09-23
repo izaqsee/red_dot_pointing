@@ -1,0 +1,10 @@
+{
+  "tinyusb_head": "b80f1c107d0a33eb3be055f95fe0b3b9d6c0be48",
+  "reference": "E:/projects/tinyusb-master",
+  "sha256": {
+    "src/class/net/ncm_device.c": "8280cf623bbb9fc013b4bcee83e361bfc71bebfad789d2523ddaa3710a7ba7b6",
+    "src/device/usbd.c": "0f72268ce1c3e1c29b8d7bf4719e89aa3083fda90bacc115385cc16db79dd621",
+    "examples/device/net_lwip_webserver/src/main.c": "f99821f7da74b60bdbc566bf5d043dc06612e8cc57732c0bd9436322e806b53b",
+    "examples/device/net_lwip_webserver/src/usb_descriptors.c": "61d30ec99f58dedf336ec5a6eaa9dbf50fb7790201b74c654fed3bd70c20e7fa"
+  }
+}

@@ -75,7 +75,15 @@ Keyboard追加後はUSBが再列挙され、COM番号が変わる場合があり
 
 `configurator/`のVanilla HTML / CSS / JavaScriptだけで動作します。
 framework、npm install、build、backend処理、外部API、CDNは不要です。
-**Web Serial API**で、ブラウザからUSB Serialポートへ直接接続します。
+起動時にsame-originの`api/command`へGET commandをPOSTし、有効なRedPoint応答があれば
+**USB Ethernet HTTP mode**へ自動接続します。APIがなければ既存の**Web Serial API**へfallbackします。
+HTTP modeはpermission dialogやsecure contextを必要とせず、iPadのようにWeb Serialがない環境でも使用できます。
+HTTP modeのDisconnectはlogical session切断で、ConnectでGET同期から再接続します。
+FrontendにデバイスIPは固定していません。
+
+HTTP server側のlwIP adapterとstatic asset生成は追加済みですが、現在のArduino sketch単独ではEthernetを有効化しません。
+実機確認済みのTinyUSB network実験とHID／Flash／LEDを1つのbuildへ統合する作業は残っています。
+構成・CMake組込・実機確認手順は[USB Ethernet integration](docs/usb-ethernet.md)を参照してください。
 
 repo直下で、Pythonによるローカルの静的ファイル配信を起動します。
 
@@ -119,7 +127,7 @@ localhostとGitHub Pagesの許可は別です。
 手動pickerはVID情報がないportも選べるよう従来どおり表示しますが、GETによる本人確認は必須です。
 探索失敗はページ全体のfatal errorにはしません。probe後のclose失敗時は次候補を開かず中止します。
 reader／writer lockを解放してからcloseし、再接続できない場合はUSBを挿し直してください。
-探索はSerialのGETだけを使用し、network request／backend／CDN／device情報の永続化を追加しません。
+Serial探索はGETだけを使用します。起動時のHTTP probeはsame-originだけで、外部backend／CDN／device情報の永続化は追加しません。
 
 制限: GET protocolが同一の別firmwareは識別できません。ブラウザ・OSによるport open／close時間はGET timeoutに含まれません。
 起動途中やport占有中は検出に失敗することがあります。切断処理中のUSB connect eventは処理を重ねず無視するため、
@@ -189,7 +197,7 @@ UIは応答で確認した値を**Saved**とし、設定を変えると**Unsaved
 EEPROM領域やFlash容量の変更、全消去を伴う書き込みでは保存値が失われる場合があります。
 
 設定値・Serial dataの外部送信、analytics、localStorageへの保存は行いません。
-すべて同梱のローカルassetを使い、CSPでもアプリのネットワーク接続を無効化しています。
+すべて同梱のローカルassetを使い、CSPはsame-originへのHTTP API通信だけを許可します。外部へのデバイスデータ送信は行いません。
 GitHub Pages版でもデバイスデータは外部serverへ送りません。GitHubには静的ページの通常の取得だけが発生します。
 既存のPages workflowをそのまま利用します。この変更ではpush／deployやGitHub側の設定変更は行いません。
 

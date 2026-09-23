@@ -206,6 +206,60 @@
     };
   }
 
+  // HTTP uses the exact same framed protocol as Serial. No address assumptions.
+  function createHttpTransport(fetchRequest, onText, timeoutMs = RESPONSE_TIMEOUT_MS) {
+    let closed = false;
+    let current = null;
+    function cancel() {
+      if (!current) return;
+      current.cancelled = true;
+      clearTimeout(current.timer);
+      current.controller.abort();
+      current = null;
+    }
+    return {
+      start() {},
+      async send(text) {
+        if (closed) throw new Error("HTTP session is closed");
+        cancel(); // A resync supersedes the previous timed-out HTTP request.
+        const request = { controller: new AbortController(), cancelled: false, deadline: Date.now() + timeoutMs };
+        current = request;
+        request.timer = setTimeout(() => {
+          request.cancelled = true;
+          request.controller.abort();
+        }, timeoutMs);
+        try {
+          const response = await fetchRequest("api/command", {
+            method: "POST", headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
+            body: text, cache: "no-store", credentials: "same-origin", mode: "same-origin",
+            redirect: "error", signal: request.controller.signal
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const body = await response.text();
+          if (body.length > MAX_RESPONSE_LINE) throw new Error("HTTP response too large");
+          if (!closed && current === request && !request.cancelled && Date.now() < request.deadline) onText(body);
+        } catch (error) {
+          // The protocol owns timeout/resync. An abort must not turn timeout into WRITE_FAILED.
+          if (!closed && current === request && !request.cancelled && Date.now() < request.deadline) throw error;
+        } finally { clearTimeout(request.timer); }
+      },
+      close() { closed = true; cancel(); return Promise.resolve(); }
+    };
+  }
+
+  function createHttpConnection(fetchRequest, timeoutMs = RESPONSE_TIMEOUT_MS) {
+    const active = { kind: "http" };
+    active.protocol = createProtocol(text => active.transport.send(text), timeoutMs);
+    active.transport = createHttpTransport(fetchRequest, text => active.protocol.accept(text), timeoutMs);
+    active.openAndSync = () => active.protocol.request("GET", { resync: true });
+    active.close = () => {
+      active.heartbeat?.stop();
+      active.protocol.close();
+      return active.transport.close();
+    };
+    return active;
+  }
+
   function authorizedCandidates(ports) {
     return [...new Set(ports)].filter(port => {
       try { return port.getInfo().usbVendorId === 0x2e8a; }
@@ -274,10 +328,11 @@
   }
 
   // UI: confirmed configuration comes only from a matched device response.
-  function mount(document, serial, secureContext) {
+  function mount(document, serial, secureContext, { fetch: fetchRequest = document.defaultView?.fetch?.bind(document.defaultView) } = {}) {
     const byId = id => document.getElementById(id);
     const controls = Object.fromEntries(KEYS.map(key => [key, byId(key)]));
     const supported = Boolean(serial && secureContext);
+    let httpMode = false;
     let session = null;
     let attempt = null;
     let autoConnectSuppressed = false;
@@ -330,7 +385,7 @@
     }
     function render() {
       const ready = connectionState === "connected" && confirmed !== null;
-      byId("connect").disabled = !supported || connectionState !== "disconnected";
+      byId("connect").disabled = !(supported || httpMode) || connectionState !== "disconnected";
       byId("disconnect").disabled = !session || connectionState === "disconnecting";
       byId("pointer-controls").disabled = !ready || resetRequested || saveRequested || Boolean(recordingKey);
       byId("button-controls").disabled = !ready || !hasActions() || resetRequested || saveRequested || Boolean(recordingKey);
@@ -467,7 +522,7 @@
       }
     }
     function beginAttempt(state) {
-      if (!supported || attempt || session || connectionState !== "disconnected") return null;
+      if (!(supported || httpMode) || attempt || session || connectionState !== "disconnected") return null;
       attempt = { cancelled: false };
       connectionState = state;
       render();
@@ -485,38 +540,72 @@
       return active;
     }
     async function connectSelectedPort(port, owner) {
-      const active = newConnection(port);
+      const active = httpMode ? createHttpConnection(fetchRequest) : newConnection(port);
+      session = active;
       connectionState = "syncing";
       message("RedPointをGETで確認しています…");
       render();
       try {
         const config = await active.openAndSync();
         if (!currentAttempt(owner) || session !== active) return;
-        confirmed = config;
-        const info = port.getInfo();
-        byId("port-info").textContent = info.usbVendorId === undefined ? "USB Serial · 115200 baud" :
-          `USB ${info.usbVendorId.toString(16).padStart(4, "0")}:${(info.usbProductId ?? 0).toString(16).padStart(4, "0")} · 115200 baud`;
-        active.heartbeat = createHeartbeat(active.protocol,
-          () => session === active && connectionState === "connected" && !busy &&
-            !drafts.size && !resetRequested && !saveRequested && !recordingKey,
-          async error => {
-            if (session !== active) return;
-            if (error.code === "TIMEOUT") {
-              await recover(active);
-              if (session === active) render();
-            } else await disconnect(`Heartbeat通信エラー: ${error.message}`, "error");
-          }, () => { if (session === active) void pump(); });
-        attempt = null;
-        connectionState = "connected";
-        active.heartbeat.start();
-        message("設定を取得しました。操作した項目はデバイスの応答後に確定します。");
-        render();
+        adoptConnection(active, config);
       } catch (error) {
         try { await active.close(); }
         catch (closeError) { throw new Error(`ポート解放エラー: ${closeError.message}。USBを挿し直してください。`); }
         finally { if (session === active) session = null; }
         throw error;
       }
+    }
+    function adoptConnection(active, config) {
+      confirmed = config;
+      const info = active.port?.getInfo() || {};
+      byId("port-info").textContent = httpMode ? "USB Ethernet · IPv4 Link-Local" : info.usbVendorId === undefined ? "USB Serial · 115200 baud" :
+        `USB ${info.usbVendorId.toString(16).padStart(4, "0")}:${(info.usbProductId ?? 0).toString(16).padStart(4, "0")} · 115200 baud`;
+      active.heartbeat = createHeartbeat(active.protocol,
+        () => session === active && connectionState === "connected" && !busy &&
+          !drafts.size && !resetRequested && !saveRequested && !recordingKey,
+        async error => {
+          if (session !== active) return;
+          if (error.code === "TIMEOUT") {
+            await recover(active);
+            if (session === active) render();
+          } else await disconnect(`Heartbeat通信エラー: ${error.message}`, "error");
+        }, () => { if (session === active) void pump(); });
+      attempt = null;
+      connectionState = "connected";
+      active.heartbeat.start();
+      message("設定を取得しました。操作した項目はデバイスの応答後に確定します。");
+      render();
+    }
+    async function chooseTransport() {
+      if (fetchRequest) {
+        const owner = { cancelled: false };
+        attempt = owner;
+        connectionState = "discovering";
+        message("USB EthernetのRedPointを確認しています…");
+        render();
+        const active = createHttpConnection(fetchRequest);
+        session = active;
+        try {
+          const config = await active.openAndSync();
+          if (!currentAttempt(owner) || session !== active) return;
+          httpMode = true;
+          adoptConnection(active, config);
+          return;
+        } catch {
+          await active.close();
+          if (!currentAttempt(owner)) return;
+          session = null;
+          attempt = null;
+          connectionState = "disconnected";
+        }
+      }
+      if (!supported) message(secureContext ?
+        "このブラウザはWeb Serialに対応していません。USB Ethernet接続またはデスクトップ版Chrome/Edgeを使用してください。" :
+        "USB Ethernet APIを確認できませんでした。Web SerialにはlocalhostまたはHTTPSが必要です。", "error");
+      else message("ConnectからRedPointへのアクセスを許可してください。");
+      render();
+      if (supported) void autoConnectAuthorizedPorts();
     }
     function finishAttempt(owner, text, kind = "info") {
       if (!currentAttempt(owner)) return;
@@ -530,11 +619,11 @@
     async function connectManual() {
       const owner = beginAttempt("connecting");
       if (!owner) return;
-      message("RedPointのSerialポートを選んでください。");
+      message(httpMode ? "USB Ethernetへ再接続しています…" : "RedPointのSerialポートを選んでください。");
       try {
         // Keep the picker unfiltered so devices without VID metadata still work.
         // Only this click handler may request new browser permission.
-        const port = await serial.requestPort();
+        const port = httpMode ? null : await serial.requestPort();
         if (currentAttempt(owner)) await connectSelectedPort(port, owner);
       } catch (error) {
         finishAttempt(owner, error.name === "NotFoundError" ? "ポート選択をキャンセルしました。" :
@@ -543,7 +632,7 @@
       }
     }
     async function autoConnectAuthorizedPorts() {
-      if (autoConnectSuppressed || !serial?.getPorts) return;
+      if (httpMode || autoConnectSuppressed || !serial?.getPorts) return;
       const owner = beginAttempt("discovering");
       if (!owner) return;
       message("許可済みのRedPointを確認しています…");
@@ -623,21 +712,17 @@
       void pump();
     });
     serial?.addEventListener("disconnect", event => {
-      if (session && (event.port || event.target) === session.port) {
+      if (session?.port && (event.port || event.target) === session.port) {
         session.fail(new Error("USBデバイスが切断されました。"));
       }
     });
     serial?.addEventListener("connect", () => { void autoConnectAuthorizedPorts(); });
-    if (!supported) message(secureContext ?
-      "このブラウザはWeb Serialに対応していません。デスクトップ版ChromeまたはEdgeで開いてください。" :
-      "Web Serialには安全な接続が必要です。localhostまたはHTTPSで開いてください。", "error");
-    if (supported) message("ConnectからRedPointへのアクセスを許可してください。");
     render();
-    if (supported) void autoConnectAuthorizedPorts();
+    void chooseTransport();
   }
 
   // Node's built-in test runner can exercise the actual code without a build tool.
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
+    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
   } else mount(document, navigator.serial, window.isSecureContext);
 })();
