@@ -1,0 +1,4 @@
+#pragma once
+// Physical capacity confirmed by the user with picotool: 16384 KiB.
+#define REDPOINT_FLASH_BYTES @REDPOINT_FLASH_BYTES@u
+#define REDPOINT_CONFIG_OFFSET @REDPOINT_CONFIG_OFFSET@u

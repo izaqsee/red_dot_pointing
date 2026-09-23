@@ -20,9 +20,12 @@ lwip = [Path(c["file"]) for c in commands if "/lib/lwip/src/" in c["file"].repla
 assert lwip
 tinyusb = lwip[0].parents[4]
 sources = [HERE / "native/integration.cpp", HERE.parent / "src/config_platform.cpp",
-           HERE.parent / "src/config_cdc.cpp", ROOT / "firmware/http_lwip/redpoint_httpd.cpp"]
+           HERE / "native/platform.cpp", HERE / "native/hardware_tests.cpp",
+           HERE.parent / "src/config_cdc.cpp", HERE.parent / "src/input_runtime.cpp",
+           HERE.parent / "src/hid_state.cpp", HERE.parent / "src/status_led.cpp",
+           HERE.parent / "src/config_storage.cpp", ROOT / "firmware/http_lwip/redpoint_httpd.cpp"]
 sources += [ROOT / "firmware/redpoint" / name for name in
-            ("config_command.cpp", "config_http.cpp", "config_record.cpp", "button_action_codec.cpp")]
+            ("config_command.cpp", "config_http.cpp", "config_record.cpp", "button_action_codec.cpp", "button_action_state.cpp")]
 sources += lwip
 includes = [HERE / "native", HERE.parent / "src", ROOT / "firmware/redpoint",
             ROOT / "firmware/http_lwip",

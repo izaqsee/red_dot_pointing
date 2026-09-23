@@ -1,4 +1,6 @@
 #include "config_platform.h"
+#include "test_platform.h"
+#include "input_runtime.h"
 #include "config.h"
 #include "config_storage.h"
 #include "status_led.h"
@@ -19,8 +21,6 @@
 #include <string>
 #include <vector>
 
-static uint32_t now;
-extern "C" uint32_t redpoint_platform_millis(void) { return now; }
 extern "C" uint32_t sys_now(void) { return now; }
 extern "C" sys_prot_t sys_arch_protect(void) { return 0; }
 extern "C" void sys_arch_unprotect(sys_prot_t) {}
@@ -123,7 +123,8 @@ static std::string bodyOf(const std::string &wire) {
 }
 int main(int argc, char **argv) {
   assert(argc == 3); // Configurator directory, output GET capture.
-  redpoint_config_init(); lwip_init();
+  runHardwareTests();
+  testReset(); lwip_init();
   ip4_addr_t ip, mask, gw;
   IP4_ADDR(&ip, 169, 254, 7, 1); IP4_ADDR(&mask, 255, 255, 0, 0); IP4_ADDR(&gw, 0, 0, 0, 0);
   assert(netif_add(&network, &ip, &mask, &gw, nullptr, initNetwork, ip4_input));
@@ -148,16 +149,24 @@ int main(int argc, char **argv) {
   assert(bodyOf(post("PING")) == serial("PING\n"));
   assert(bodyOf(post("SET invertX 1")).find("\"ok\":true") != std::string::npos);
   assert(config.invertX && configUnsaved());
+  redpoint_config_apply(); testPacket(2, 3); assert(mouseReports.back()[1] == -3);
   assert(serial("GET\n") == bodyOf(post("GET")));
   assert(serial("SET rightAction key:03:17\n").find("\"ok\":true") != std::string::npos);
   assert(bodyOf(post("GET")).find("key:03:17") != std::string::npos);
+  serial("SET pointerSensitivity 0.5\n"); redpoint_config_apply(); testPacket(2, 4);
+  assert(mouseReports.back()[1] == -2);
   const auto beforeSave = config;
+  failCommit = true;
   assert(bodyOf(post("SAVE")) == "@CONFIG {\"ok\":false,\"error\":\"SAVE_FAILED\"}\r\n");
-  assert(configUnsaved() && equalDeviceConfig(beforeSave, config) && !takeConfigFlashWrite());
+  assert(configUnsaved() && equalDeviceConfig(beforeSave, config) && takeConfigFlashWrite());
   assert(serial("SAVE\n").find("SAVE_FAILED") != std::string::npos);
+  failCommit = false;
+  assert(bodyOf(post("SAVE")).find("\"ok\":true") != std::string::npos);
+  assert(!configUnsaved()); redpoint_config_apply();
+  redpoint_config_init(); redpoint_config_end_boot(); assert(equalDeviceConfig(beforeSave, config));
   assert(bodyOf(post("SET invertY 9")).find("INVALID_VALUE") != std::string::npos);
   assert(bodyOf(post("RESET")).find("\"ok\":true") != std::string::npos);
-  assert(!configUnsaved() && equalDeviceConfig(config, DEFAULT_CONFIG));
+  assert(configUnsaved() && equalDeviceConfig(config, DEFAULT_CONFIG));
   assert(bodyOf(post("GET")) == initial);
   std::cout << "PASS: Pico backend HTTP/CDC shared GET/PING/SET/RESET; SAVE_FAILED preserves state/baseline\n";
   for (const auto &bad : {std::string("GET\nSAVE"), std::string("GET\0x", 5), std::string(" \t")})
@@ -173,7 +182,7 @@ int main(int argc, char **argv) {
   serialIn = "SET invertX "; redpoint_config_cdc_task();
   serialConnected = false; redpoint_config_cdc_task(); serialConnected = true;
   assert(serial("GET\n") == initial);
-  serial("SET invertX 1\n"); redpoint_config_init();
-  assert(equalDeviceConfig(config, DEFAULT_CONFIG));
-  std::cout << "PASS: malformed POST rejection, subsequent recovery, CDC partial writes/disconnect, volatile reboot\n";
+  serial("SET invertX 1\n"); redpoint_config_init(); redpoint_config_end_boot();
+  assert(equalDeviceConfig(config, beforeSave));
+  std::cout << "PASS: malformed POST rejection, recovery, CDC partial writes/disconnect, HTTP/CDC physical effects and persisted reboot\n";
 }

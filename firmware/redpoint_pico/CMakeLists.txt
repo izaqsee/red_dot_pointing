@@ -21,7 +21,27 @@ if(NOT EXISTS "${LWIP}/src/core/init.c")
 endif()
 add_executable(redpoint_reva src/main.c src/usb_descriptors.c src/hid.c
   src/config_platform.cpp src/config_cdc.cpp
-  ../redpoint/button_action_codec.cpp ../redpoint/config_record.cpp)
+  src/input_runtime.cpp src/hid_state.cpp src/platform_io.cpp src/status_led.cpp
+  src/config_storage.cpp src/flash_backend.cpp
+  ../redpoint/button_action_codec.cpp ../redpoint/button_action_state.cpp ../redpoint/config_record.cpp)
+# RevA physical capacity was confirmed with picotool (16384 KiB). Reserve the
+# last sector outside all loadable firmware/ROM assets, without putting it in UF2.
+set(REDPOINT_FLASH_BYTES 16777216)
+math(EXPR REDPOINT_CONFIG_OFFSET "${REDPOINT_FLASH_BYTES} - 4096")
+set(layout "${CMAKE_CURRENT_BINARY_DIR}/redpoint-layout")
+file(MAKE_DIRECTORY "${layout}")
+configure_file(src/flash_layout.h.in "${layout}/flash_layout.h" @ONLY)
+file(WRITE "${layout}/pico_flash_region.ld"
+  "FLASH(rx) : ORIGIN = 0x10000000, LENGTH = ${REDPOINT_CONFIG_OFFSET}\n")
+file(WRITE "${layout}/section_extra_post_end.incl"
+  "ASSERT(__flash_binary_end <= 0x10fff000, \"Firmware overlaps RedPoint config sector\")\n")
+pico_add_linker_script_override_path(redpoint_reva "${layout}"
+  FILES pico_flash_region.ld section_extra_post_end.incl)
+target_include_directories(redpoint_reva PRIVATE "${layout}")
+target_compile_definitions(redpoint_reva PRIVATE PICO_FLASH_SIZE_BYTES=16777216
+  PICO_FLASH_ASSUME_CORE1_SAFE=1 PICO_STACK_SIZE=0x1000)
+pico_generate_pio_header(redpoint_reva "${PICO_SDK_PATH}/src/rp2_common/pico_status_led/ws2812.pio")
+target_link_libraries(redpoint_reva PRIVATE hardware_pio hardware_flash pico_flash)
 target_include_directories(redpoint_reva PRIVATE src "${LWIP}/src/include")
 set(LWIP_CORE def dns inet_chksum init ip mem memp netif pbuf raw stats sys tcp tcp_in tcp_out timeouts udp)
 foreach(unit IN LISTS LWIP_CORE)
@@ -52,6 +72,6 @@ set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/../redpoint/config_command.cpp"
 # CDC is owned by the application; SDK stdio must not claim the same interface.
 pico_enable_stdio_usb(redpoint_reva 0)
 pico_enable_stdio_uart(redpoint_reva 0)
-pico_set_program_name(redpoint_reva "RedPoint RevA Milestone B")
-pico_set_program_version(redpoint_reva "0.2.0")
+pico_set_program_name(redpoint_reva "RedPoint RevA Milestone C")
+pico_set_program_version(redpoint_reva "0.3.0")
 target_link_options(redpoint_reva PRIVATE "LINKER:--print-memory-usage")

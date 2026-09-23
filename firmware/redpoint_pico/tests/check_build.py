@@ -17,6 +17,7 @@ header = struct.unpack_from("<16sHHIIIIIHHHHHH", elf)
 sections = [struct.unpack_from("<IIIIIIIIII", elf, header[6] + i * header[11])
             for i in range(header[12])]
 symbols = {}
+symbol_addresses = {}
 for section in sections:
     if section[1] != 2:  # SHT_SYMTAB
         continue
@@ -25,6 +26,8 @@ for section in sections:
     for pos in range(section[4], section[4] + section[5], section[9]):
         name, addr, size, _, _, index = struct.unpack_from("<IIIBBH", elf, pos)
         name = strings[name:strings.find(b"\0", name)].decode()
+        if name and index:
+            symbol_addresses[name] = addr
         if not size or not 0 < index < len(sections):
             continue
         target = sections[index]

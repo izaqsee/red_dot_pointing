@@ -12,7 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [ROOT / "tests/firmware_config_test.cpp", ROOT / "tests/firmware_actions_test.cpp", ROOT / "tests/firmware_http_test.cpp", ROOT / "firmware/http_lwip/redpoint_httpd.cpp"] + [
     ROOT / "firmware/redpoint" / name
-    for name in ("status_led.cpp", "config.cpp", "config_command.cpp", "config_http.cpp", "config_record.cpp", "config_storage.cpp", "button_action.cpp", "button_action_codec.cpp", "keyboard_mapping.cpp")
+    for name in ("status_led.cpp", "config.cpp", "config_command.cpp", "config_http.cpp", "config_record.cpp", "config_storage.cpp", "button_action.cpp", "button_action_state.cpp", "button_action_codec.cpp", "keyboard_mapping.cpp")
 ]
 INCLUDES = [ROOT / "tests/firmware_stubs", ROOT / "firmware/redpoint"]
 

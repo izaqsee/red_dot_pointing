@@ -4,6 +4,8 @@
 #include "tusb.h"
 #include "hid.h"
 #include "config_platform.h"
+#include "platform_io.h"
+#include "input_runtime.h"
 #include "lwip/init.h"
 #include "lwip/timeouts.h"
 #include "lwip/sys.h"
@@ -52,6 +54,7 @@ uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
 }
 int main(void) {
   board_init();
+  redpoint_hardware_init();
   redpoint_config_init();
   lwip_init();
   ip4_addr_t ip, mask, gateway;
@@ -66,12 +69,18 @@ int main(void) {
   tusb_rhport_init_t init = { .role = TUSB_ROLE_DEVICE, .speed = TUSB_SPEED_FULL };
   tusb_init(BOARD_TUD_RHPORT, &init);
   board_init_after_tusb();
+  redpoint_input_init();
+  redpoint_input_irq_enable();
   httpd_init();
+  redpoint_config_end_boot();
   while (true) {
     tud_task();
     sys_check_timeouts();
     redpoint_config_cdc_task();
+    redpoint_config_apply();
+    redpoint_input_task();
     redpoint_hid_task();
+    redpoint_status_task();
   }
 }
 sys_prot_t sys_arch_protect(void) { return 0; }

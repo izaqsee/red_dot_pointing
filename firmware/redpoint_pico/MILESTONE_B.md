@@ -1,5 +1,8 @@
 # Milestone B — Configurator over the frozen USB Ethernet architecture
 
+Historical B report. A/B have since been hardware-verified by the user. The current
+target includes Milestone C; see [MILESTONE_C.md](MILESTONE_C.md).
+
 Milestone A was confirmed on hardware by the user: CDC-NCM + CDC Serial + HID
 Mouse + HID Keyboard, 169.254.7.1/16, no gateway/DHCP, Windows without NCM Code 10,
 Windows HTTP 200, iPad Safari HTTP and simultaneous Wi-Fi Internet. None of those
