@@ -1,7 +1,53 @@
 # RedPoint
 
-TrackPoint互換モジュールのPS/2入力をRP2040でUSB HID Mouseへ変換する、
-自作ポインティングデバイスです。独立したL/M/RボタンへのMouse／Keyboard shortcut／Disabled割当と、logical Mouse Middle押下中の感度変更に対応します。
+TrackPoint系ポインティングモジュールを、独立したUSB HIDデバイスとして使うための
+ハードウェア／ファームウェア／Configuratorの試作プロジェクトです。
+
+<img src="docs/images/redpoint-revb.jpg" alt="RedPoint RevB prototype" width="600">
+
+## Overview
+
+市販機器から入手したTrackPoint系モジュールを解析し、
+Raspberry Pi Pico（RP2040）で入力を読み取り、
+USB HID MouseとしてPCから利用できるところまで実装しています。
+
+現在の試作機では、
+
+- ポインティング操作
+- 独立した Left / Middle / Right ボタン
+- ポインタ感度・加速度・反転設定
+- Middle押下中の感度切替
+- 各ボタンへのMouse / Keyboard Shortcut / Disabled割当
+- Web SerialによるブラウザConfigurator
+- 設定のFlash保存
+- WS2812による状態表示
+
+が動作します。
+
+## Project status
+
+**Working prototype / under development**
+
+USB HIDとしての基本機能とWeb Serial Configuratorは実機動作済みです。
+USB Ethernet経由でのConfigurator利用は現在実験中です。
+
+## Hardware
+
+- TrackPoint系 PS/2 module
+- Raspberry Pi Pico / RP2040
+- 3 × physical buttons
+- Level conversion circuitry
+
+## Configurator
+
+[Open Configurator](https://izaqsee.github.io/red_dot_pointing/)
+
+Chrome / EdgeなどWeb Serial対応ブラウザから、
+ファームウェア設定を変更できます。
+
+---
+
+## Firmwareのbuild / upload
 
 ## Firmwareのbuild / upload
 
@@ -346,3 +392,12 @@ LED送信はsetup／main loopの色変化時だけです。PIO使用のNeoPixel�
 PS/2への無影響はhostテストだけでは保証できません。1 pixelの線上送信は約30 µsで、
 CPUのIRQ停止時間とは同一ではありません。ラッチ待ち中はSerial処理を次loopへ譲り、HID／PS/2処理を続けます。
 Flash commitの既存のIRQ停止と受信再同期は従来どおりです。
+
+## License
+
+RedPoint's original source code is licensed under the
+[MIT License](LICENSE).
+
+Some files contain or are derived from third-party open-source software
+and remain subject to their respective licenses.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
