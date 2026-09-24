@@ -8,13 +8,13 @@
 
 統合済みPico SDK targetは[firmware/redpoint_pico](../firmware/redpoint_pico/README.md)です。
 USB Ethernet、HID、Flash、LED、Pointer/Wheel独立設定はC.2までWindows/iPadで実機確認済みです。
-C.3のiPad表示・touch操作もユーザー確認済みです。各段階の結果は[C.2](../firmware/redpoint_pico/MILESTONE_C2.md)と[C.3](../firmware/redpoint_pico/MILESTONE_C3.md)を参照してください。以下のAPI/lwIP詳細は引き続き構成の参照資料です。
+C.3のiPad表示・touch操作も実機確認済みです。各段階の結果は[C.2](../firmware/redpoint_pico/MILESTONE_C2.md)と[C.3](../firmware/redpoint_pico/MILESTONE_C3.md)を参照してください。以下のAPI/lwIP詳細は引き続き構成の参照資料です。
 
 ### 初期adapter段階の範囲（履歴）
 
 この節は統合Pico target以前のcompile-only段階を記録したもので、現在の実装状況ではありません。
 frontendはsame-origin HTTPを優先し、既存Web Serialへfallbackします。`firmware/http_lwip`は独自TCP/HTTP serverではなく、**標準lwIP httpdの拡張**です。両adapterは単一の`config_command.cpp`を使います。
-Arduino sketchはCDC + Mouse + Keyboardをbuildしますが、それだけでEthernetは有効になりません。当時の実機確認済みnetwork実験は別Pico SDK/TinyUSB project `E:/projects/tinyusb-master/examples/device/net_lwip_webserver`でした。
+Arduino sketchはCDC + Mouse + Keyboardをbuildしますが、それだけでEthernetは有効になりません。当時の実機確認済みnetwork実験は別Pico SDK/TinyUSB project `<TINYUSB_CHECKOUT>/examples/device/net_lwip_webserver`でした。
 
 - `main.c`: IP 169.254.7.1、mask 255.255.0.0、gateway 0.0.0.0。
 - `lwipopts.h`: NO_SYS=1、DHCPなし、標準httpd/fs。
@@ -99,7 +99,7 @@ python tools/generate_http_fsdata.py --output build/http/fsdata_redpoint.c
 node --test tests/configurator.test.cjs
 python tests/run_firmware_tests.py
 python tests/http_fsdata_test.py
-python tests/compile_http_lwip.py E:/projects/tinyusb-master/examples/device/net_lwip_webserver/build/compile_commands.json
+python tests/compile_http_lwip.py "<TINYUSB_CHECKOUT>/examples/device/net_lwip_webserver/build/compile_commands.json"
 arduino-cli compile --fqbn rp2040:rp2040:vccgnd_yd_rp2040 firmware/redpoint
 ```
 
@@ -112,7 +112,7 @@ Host testはSerial/HTTP応答一致、mutation、不正/複数body、分割pbuf�
 4. iPad Wi-Fi併存、再接続、HTTP停滞復帰、network/SAVE負荷中の移動・buttons・shortcutsでdrop/stutter/stuckを確認。
 5. Pages/localhostにAPIがない場合のSerial fallbackを確認。
 
-この初期作業ではpush/upload/統合実機試験は未実施でした。その後の完了状況は冒頭を参照してください。
+この初期段階では統合実機試験は未実施でした。その後の完了状況は冒頭を参照してください。
 2026-09-23の結果: Node 54/54、firmware host、fsdata byte/header/determinism、実lwIP ARM object compileがPASS。Arduino Serial sketchはインストール済みPhilhower 6.1.1でcompile成功、program 68,320 B/global RAM 10,604 B。validConfig/parseLine/createLineReader/createProtocol/createHeartbeatも前revisionと不変確認しました。
 
 ## EN
@@ -123,7 +123,7 @@ The integrated Pico SDK target is now [firmware/redpoint_pico](../firmware/redpo
 USB Ethernet + HID + Flash + LED and the separate Pointer/Wheel settings were hardware-verified
 on Windows/iPad through C.2. See [C.2](../firmware/redpoint_pico/MILESTONE_C2.md) and
 [C.3 UI validation](../firmware/redpoint_pico/MILESTONE_C3.md) for milestone-specific results.
-C.3 iPad display and touch operation have also been user-confirmed.
+C.3 iPad display and touch operation have also been hardware-verified.
 The API/lwIP integration details below remain the architecture reference.
 
 ### Original adapter-stage boundary (historical)
@@ -138,9 +138,9 @@ a replacement TCP/HTTP server. `config_command.cpp` is the single command core
 used by both adapters.
 
 The existing Arduino sketch still builds CDC + Mouse + Keyboard. It does **not**
-enable Ethernet just by compiling this commit. The validated Ethernet experiment
+enable Ethernet by itself. The validated Ethernet experiment
 is a separate Pico SDK/TinyUSB project at
-`E:/projects/tinyusb-master/examples/device/net_lwip_webserver`:
+`<TINYUSB_CHECKOUT>/examples/device/net_lwip_webserver`:
 
 - `main.c` sets 169.254.7.1, mask 255.255.0.0, gateway 0.0.0.0.
 - `lwipopts.h` uses `NO_SYS=1`, DHCP disabled, standard httpd/fs.
@@ -268,7 +268,7 @@ Flash; generation reruns when any input asset changes.
 node --test tests/configurator.test.cjs
 python tests/run_firmware_tests.py
 python tests/http_fsdata_test.py
-python tests/compile_http_lwip.py E:/projects/tinyusb-master/examples/device/net_lwip_webserver/build/compile_commands.json
+python tests/compile_http_lwip.py "<TINYUSB_CHECKOUT>/examples/device/net_lwip_webserver/build/compile_commands.json"
 arduino-cli compile --fqbn rp2040:rp2040:vccgnd_yd_rp2040 firmware/redpoint
 ```
 
@@ -277,7 +277,7 @@ bodies, fragmented pbuf delivery, interrupted POST cleanup, pool exhaustion,
 headers and static asset byte equality. ARM compilation uses temporary objects
 only and leaves the external build/checkouts unchanged.
 
-Remaining hardware integration:
+Hardware integration outstanding at the initial adapter stage:
 
 1. Compose the working TinyUSB Ethernet descriptors/netif and the actual
    CDC + Mouse + Keyboard + EEPROM + WS2812 implementations into one build target.
@@ -290,7 +290,7 @@ Remaining hardware integration:
    traffic for packet drops, stutter or stuck inputs.
 5. Verify GitHub Pages/localhost without the device HTTP API still use Serial.
 
-No remote push, hardware upload, or combined-target hardware test was performed.
+Combined-target hardware testing had not yet been performed at this initial stage.
 
 Validation results (2026-09-23): Node **54/54 passed**; firmware host tests passed;
 fsdata byte/header/determinism test passed; actual lwIP ARM object compilation

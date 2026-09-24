@@ -51,7 +51,8 @@ uploadせず検出だけを確認する場合（GETのみ送信、設定変更�
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\upload-redpoint.ps1 -DetectOnly
 # 別の作業ディレクトリから。空白を含むパスも指定可能:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\work\RedPoint project\tools\upload-redpoint.ps1" -WorkspacePath "C:\work\RedPoint project" -DetectOnly
+# REDPOINT_WORKSPACEにrepositoryのpathを設定（空白を含むpathも可）
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:REDPOINT_WORKSPACE\tools\upload-redpoint.ps1" -WorkspacePath "$env:REDPOINT_WORKSPACE" -DetectOnly
 ```
 
 `RedPoint detected on COMxx`が出れば検出成功です。実際にbuild／uploadするときは`-DetectOnly`を外します。
@@ -121,8 +122,9 @@ Detection without upload (GET only; no setting changes):
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\upload-redpoint.ps1 -DetectOnly
-# 別の作業ディレクトリから。空白を含むパスも指定可能:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\work\RedPoint project\tools\upload-redpoint.ps1" -WorkspacePath "C:\work\RedPoint project" -DetectOnly
+# From another working directory; paths containing spaces are supported:
+# REDPOINT_WORKSPACE: repository path (including spaces, if applicable)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:REDPOINT_WORKSPACE\tools\upload-redpoint.ps1" -WorkspacePath "$env:REDPOINT_WORKSPACE" -DetectOnly
 ```
 
 `RedPoint detected on COMxx` indicates success. Remove `-DetectOnly` to build/upload.

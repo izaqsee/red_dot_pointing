@@ -75,7 +75,7 @@ RedPoint is a prototype hardware, firmware, and browser Configurator project tha
 **Working prototype / under development**
 
 The Pico SDK firmware has been hardware-verified on Windows and iPad through C.2: pointer input, native scrolling, button mapping, the USB Ethernet Configurator, and saved settings restored after reboot.
-The compact C.3 UI has passed builds, automated tests, local browser checks, and user verification of display and touch operation on a physical iPad.
+The compact C.3 UI has passed builds, automated tests, local browser checks, and display and touch verification on a physical iPad.
 
 ### Features
 

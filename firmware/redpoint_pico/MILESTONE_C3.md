@@ -4,10 +4,9 @@
 
 ## JA
 
-> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作は実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
 
-C.2はユーザー実機確認済み。今回はConfiguratorのpresentationだけを変更。
-remote push・hardware uploadは行っていない。
+C.2は実機確認済み。C.3ではConfiguratorのpresentationだけを変更。
 
 ### Layout
 
@@ -41,7 +40,7 @@ error、再同期、保存成功など必要なmessageはtoolbar直下へ表示�
 - configurator/style.css
 - configurator/app.js（mount内のUI表示・選択処理のみ）
 - tests/configurator.test.cjs（既存testを維持し、2 test追加）
-- firmware/redpoint_pico/milestone_a_freeze.json（今回許可されたCSS hashのみ更新）
+- firmware/redpoint_pico/milestone_a_freeze.json（C.3のCSS変更に伴うhashのみ更新）
 - firmware/redpoint_pico/milestone_c2_freeze.json（C.2 source baseline、新規）
 - firmware/redpoint_pico/tests/check_milestone_c3.py（新規）
 - firmware/redpoint_pico/MILESTONE_C3.md（本報告）
@@ -68,7 +67,7 @@ compile-onlyの既存-Wfloat-equal警告3件は継続。通常target buildは警
 
 ### Browser verification
 
-repo内の一時local HTTP previewを127.0.0.1だけで起動し、Codex in-app Chromiumで確認。
+repo内の一時local HTTP previewを127.0.0.1だけで起動し、local Chromium previewで確認。
 接続済みUIはhost testのGET fixtureを返すpreview handlerによるもので、実機へは接続していない。
 ブラウザ表示倍率の影響を補正して、以下はDOMのinnerWidth/innerHeightで確認したCSS pixel値。
 
@@ -91,24 +90,24 @@ build/redpoint-http/fsdata_redpoint.cを更新。最終ELF内の5 routesのasset
 HTTP APIやfirmware sourceは変更していない。
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c3.py
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_c3.py
 ```
 
 Flash 138,236 B、RAM 41,840 B + stack 4,096 B。UF2 276,480 B。
-`E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`
+`firmware/redpoint_pico/build/redpoint_reva.uf2`
 
 ### 実装時点で残っていた検証（履歴）
 
-実装時点では、iPad Safari/Chrome実機での表示・touch・browser chrome/zoom差は未検証でした。現在はユーザーによるiPad表示・touch確認が完了しています。
-実装時点では、今回のUF2でdevice-hosted pageを配信する実機確認も未実施でした。
-ユーザーによるupload後、toolbarの接続/保存、各感度/Invert、Shortcut記録、portrait回転を確認すること。
+実装時点では、iPad Safari/Chrome実機での表示・touch・browser chrome/zoom差は未検証でした。現在はiPad実機での表示・touch確認が完了しています。
+実装時点では、C.3のUF2でdevice-hosted pageを配信する実機確認も未実施でした。
+UF2書き込み後、toolbarの接続/保存、各感度/Invert、Shortcut記録、portrait回転を確認すること。
 
 ## EN
 
-> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+> Current verification status (2026-09-24): Functionality through C.2 and C.3 iPad display/touch operation have been verified on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
 
-C.2 was user-verified on hardware. This milestone changed only Configurator presentation. No remote push or hardware upload was performed.
+C.2 was verified on hardware. This milestone changed only Configurator presentation.
 
 ### Layout
 
@@ -133,7 +132,7 @@ A UI-only shortcutChoices Set represents Keyboard Shortcut selection before a ke
 - configurator/style.css
 - configurator/app.js (UI presentation/selection inside mount only)
 - tests/configurator.test.cjs (existing tests retained; two added)
-- firmware/redpoint_pico/milestone_a_freeze.json (only the authorized CSS hash updated)
+- firmware/redpoint_pico/milestone_a_freeze.json (only the hash for the C.3 CSS change updated)
 - firmware/redpoint_pico/milestone_c2_freeze.json (new C.2 source baseline)
 - firmware/redpoint_pico/tests/check_milestone_c3.py (new)
 - firmware/redpoint_pico/MILESTONE_C3.md (this report)
@@ -158,7 +157,7 @@ Existing UI checks cover each field's SET, RESET/SAVE, HTTP-first, Serial fallba
 
 ### Browser verification
 
-A temporary repo-local HTTP preview bound only to 127.0.0.1 was checked in Codex in-app Chromium. Connected UI used the host-test GET fixture, not a hardware connection. The following CSS pixel dimensions were verified using DOM innerWidth/innerHeight, compensating for browser zoom.
+A temporary repo-local HTTP preview bound only to 127.0.0.1 was checked in local Chromium preview. Connected UI used the host-test GET fixture, not a hardware connection. The following CSS pixel dimensions were verified using DOM innerWidth/innerHeight, compensating for browser zoom.
 
 | CSS viewport | Columns | document scrollHeight | document scrollWidth | Result |
 | --- | --- | --- | --- | --- |
@@ -174,12 +173,12 @@ Toolbar height measured about 55.81 CSS px. Screenshots confirmed desktop/portra
 The normal CMake build runs tools/generate_http_fsdata.py and updates build/redpoint-http/fsdata_redpoint.c. Assets for all five routes in the final ELF match current source bytes. HTTP API and firmware sources are unchanged.
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c3.py
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_c3.py
 ```
 
-Flash 138,236 B; RAM 41,840 B + stack 4,096 B; UF2 276,480 B. `E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`.
+Flash 138,236 B; RAM 41,840 B + stack 4,096 B; UF2 276,480 B. `firmware/redpoint_pico/build/redpoint_reva.uf2`.
 
 ### Verification remaining at implementation time
 
-At implementation time, iPad Safari/Chrome display/touch/browser-chrome/zoom differences and serving the device-hosted page with this UF2 had not been checked. The original acceptance steps were: after user upload, check toolbar connection/save, sensitivity/inversion controls, shortcut recording and portrait rotation. The user has since confirmed iPad display and touch operation, as recorded above.
+At implementation time, iPad Safari/Chrome display/touch/browser-chrome/zoom differences and serving the device-hosted page with this UF2 had not been checked. The original acceptance steps were: after installing the UF2, check toolbar connection/save, sensitivity/inversion controls, shortcut recording and portrait rotation. iPad display and touch operation have since been verified, as recorded above.

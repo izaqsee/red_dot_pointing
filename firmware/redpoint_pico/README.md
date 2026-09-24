@@ -5,11 +5,11 @@
 ## JA
 
 独立したRP2040 targetです。current TinyUSBのCDC-NCM、CDC ACM Serial、2つのHID interfaceを構成します。A/B/Cは実機確認済みで、USB/network/HTTP/frontend architectureをfreezeしています。CではGPIO12/13のTrackPoint PS/2、GPIO3/2/4の物理ボタン、TinyUSB入力report、設定保存、GPIO23のWS2812を追加しました。
-[C.2](MILESTONE_C2.md)にPointer/Wheel独立設定、v3移行、検証結果を記録しています。C.1のnative scrollingはWindows/iPadでユーザー確認済みです。[C](MILESTONE_C.md)は当時の配置・意図的差分・テスト・実機検証・変更一覧、[B](MILESTONE_B.md)はB時点の履歴です。
+[C.2](MILESTONE_C2.md)にPointer/Wheel独立設定、v3移行、検証結果を記録しています。C.1のnative scrollingはWindows/iPadで実機確認済みです。[C](MILESTONE_C.md)は当時の配置・意図的差分・テスト・実機検証・変更一覧、[B](MILESTONE_B.md)はB時点の履歴です。
 
 ### 依存関係とarchitecture
 
-実機確認済みの参照元は`E:/projects/tinyusb-master/examples/device/net_lwip_webserver`です。`REDPOINT_TINYUSB_PATH`は必須で、そのcheckoutのRP2040 family support、USB core、NCM driver、lwIPを直接使用します。`PICO_TINYUSB_PATH`も同じcheckoutに指定し、Arduino-Pico同梱driverは使いません。依存ツールは事前インストールが必要です。参照checkoutへは書き込まず、生成物はtargetのbuild directoryへ置きます。
+実機確認済みの参照元は`<TINYUSB_CHECKOUT>/examples/device/net_lwip_webserver`です。`REDPOINT_TINYUSB_PATH`は必須で、そのcheckoutのRP2040 family support、USB core、NCM driver、lwIPを直接使用します。`PICO_TINYUSB_PATH`も同じcheckoutに指定し、Arduino-Pico同梱driverは使いません。依存ツールは事前インストールが必要です。参照checkoutへは書き込まず、生成物はtargetのbuild directoryへ置きます。
 
 参照TinyUSB HEADは`b80f1c107d0a33eb3be055f95fe0b3b9d6c0be48`です。local変更も検出するため、`reference.json`は実際のNCM、USB core、参照exampleのSHA-256を記録します。`tests/check_build.py`はhashとcompilerが選択したNCM sourceを検証します。TinyUSBを意図的に変更する際は、新driverをreview・再検証してから記録を更新してください。
 
@@ -57,20 +57,21 @@ Mouse report protocolは5 bytes（buttons、x、y、wheel、pan）、boot protoc
 
 ### Buildと検証
 
-RedPoint repo rootからPowerShellで実行します。以下はインストール済みツールのpathです。
+RedPoint repo rootからPowerShellで実行します。`cmake`、`python`、`ninja`をPATHへ追加してください。
+`REDPOINT_TINYUSB_PATH`、`PICO_SDK_PATH`は各checkout、`PICO_TOOLCHAIN_PATH`はArm GNU Toolchainのbin、`PICOTOOL_DIR`と`PIOASM_DIR`は各CMake package directoryを指す環境変数として設定してください。検証環境のArm GNU Toolchainは14.2 rel1、picotoolとpioasmは2.3.1でした。
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' `
+cmake `
   -S firmware/redpoint_pico -B firmware/redpoint_pico/build -G Ninja `
-  -DREDPOINT_TINYUSB_PATH=E:/projects/tinyusb-master `
-  -DPICO_SDK_PATH=E:/projects/pico-sdk `
-  '-DPICO_TOOLCHAIN_PATH=C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin' `
-  -Dpicotool_DIR=E:/projects/picotool-2.3.1-x64-win/picotool `
-  -Dpioasm_DIR=E:/projects/pico-sdk-tools-2.3.1-x64-win/pioasm `
-  -DCMAKE_MAKE_PROGRAM=C:/Users/intel/AppData/Local/Microsoft/WinGet/Links/ninja.exe `
+  "-DREDPOINT_TINYUSB_PATH=$env:REDPOINT_TINYUSB_PATH" `
+  "-DPICO_SDK_PATH=$env:PICO_SDK_PATH" `
+  "-DPICO_TOOLCHAIN_PATH=$env:PICO_TOOLCHAIN_PATH" `
+  "-Dpicotool_DIR=$env:PICOTOOL_DIR" `
+  "-Dpioasm_DIR=$env:PIOASM_DIR" `
+  "-DCMAKE_MAKE_PROGRAM=$((Get-Command ninja).Source)" `
   -DCMAKE_BUILD_TYPE=MinSizeRel
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c2.py
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_c2.py
 ```
 
 検査はPython標準libraryだけを使うため、別のPython 3でも実行できます。C macroだけでなく**link済みELF**のconfiguration/interface数、endpoint address/type/size/衝突、IAD範囲、HID report size/boot class、BOS/MS OS descriptorを検査します。source由来と、UF2がRP2040形式で生成binaryと同じpayloadであることも確認します。
@@ -81,7 +82,7 @@ C.2時点のbuildはFlash **139,732 B / 使用可能16,380 KiB (0.83%)**、RAM *
 
 ### 実機受入確認とA/B freeze baseline
 
-Windows/iPadでユーザー確認済み：composite enumeration、NCM Code 10なし、Windows HTTP 200/Chrome Configurator、iPad Safari/Chrome Configuratorの自動GET同期/Connected、iPad Wi-Fi Internet併存。USB descriptor、endpoint、NCM source、netif設定はfreezeしています。次の手順はCのregression検証用として保持します。
+Windows/iPadで実機確認済み：composite enumeration、NCM Code 10なし、Windows HTTP 200/Chrome Configurator、iPad Safari/Chrome Configuratorの自動GET同期/Connected、iPad Wi-Fi Internet併存。USB descriptor、endpoint、NCM source、netif設定はfreezeしています。次の手順はCのregression検証用として保持します。
 
 Windows Device Managerの**表示 → 接続別**で、同じ`VID_CAFE&PID_4019`のcomposite parentと全機能を確認します。
 
@@ -93,7 +94,7 @@ Windows Device Managerの**表示 → 接続別**で、同じ`VID_CAFE&PID_4019`
 
 表示名はWindowsの言語/versionにより変わるのでparent/MIの関連も確認します。cold attach、抜差し、再起動、suspend/resume後も4機能が同時に存在することを確認します。`ipconfig`でhostが169.254/16、このdevice由来gatewayなしであることを確認し、`http://169.254.7.1/`を開きます。CDC commandとnetworkの同時処理、Windows NCM安定性、HID boot/report protocol、iPad Wi-Fiを維持したlink-localアクセスも確認します。descriptor解析とbuild成功だけでは実機成功を保証しません。
 
-Cの物理入力・Flash保存・WS2812、C.1のnative scrollingはユーザー確認済みです。C.2設定/default vertical方向とC.3のiPad表示・touch操作もユーザー確認済みです。消費電力/suspend適合性、runtime stack/heap high-water、長時間network throughput、MAC一意性、Windows各version互換性は未検証です。
+Cの物理入力・Flash保存・WS2812、C.1のnative scrollingは実機確認済みです。C.2設定/default vertical方向とC.3のiPad表示・touch操作も実機確認済みです。消費電力/suspend適合性、runtime stack/heap high-water、長時間network throughput、MAC一意性、Windows各version互換性は未検証です。
 
 ### ファイル
 
@@ -105,14 +106,14 @@ Independent RP2040 target: current TinyUSB CDC-NCM + CDC ACM Serial + two HID
 interfaces. Milestones A/B/C are hardware-verified and their USB/network/HTTP/frontend
 architecture is frozen. Milestone C adds GPIO12/13 TrackPoint PS/2, GPIO3/2/4
 physical buttons, TinyUSB input reports, persistent config and GPIO23 WS2812.
-See [MILESTONE_C2.md](MILESTONE_C2.md) for separate Pointer/Wheel settings, v3 migration and current validation. C.1 native scrolling is user-confirmed on Windows/iPad. See [MILESTONE_C.md](MILESTONE_C.md) for the historical C layout, intentional differences, tests,
+See [MILESTONE_C2.md](MILESTONE_C2.md) for separate Pointer/Wheel settings, v3 migration and current validation. C.1 native scrolling is hardware-verified on Windows/iPad. See [MILESTONE_C.md](MILESTONE_C.md) for the historical C layout, intentional differences, tests,
 hardware validation and the complete change list. [MILESTONE_B.md](MILESTONE_B.md)
 is the historical B report.
 
 ### Dependencies and architecture
 
 The verified reference is
-`E:/projects/tinyusb-master/examples/device/net_lwip_webserver`.
+`<TINYUSB_CHECKOUT>/examples/device/net_lwip_webserver`.
 `REDPOINT_TINYUSB_PATH` is mandatory: the build loads that checkout's RP2040
 family support, USB core, NCM driver and lwIP directly. It explicitly sets
 `PICO_TINYUSB_PATH` to the same checkout, never the Arduino-Pico bundled driver.
@@ -200,20 +201,21 @@ configuration commands through the same core as HTTP; the echo-only task is remo
 
 ### Build and validation
 
-PowerShell, from the RedPoint repo root, using the installed tool paths:
+Run PowerShell from the repository root with `cmake`, `python` and `ninja` on PATH.
+Set `REDPOINT_TINYUSB_PATH` and `PICO_SDK_PATH` to the checkouts, `PICO_TOOLCHAIN_PATH` to the Arm GNU Toolchain bin directory, and `PICOTOOL_DIR` / `PIOASM_DIR` to their CMake package directories. The validation environment used Arm GNU Toolchain 14.2 rel1 and picotool / pioasm 2.3.1.
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' `
+cmake `
   -S firmware/redpoint_pico -B firmware/redpoint_pico/build -G Ninja `
-  -DREDPOINT_TINYUSB_PATH=E:/projects/tinyusb-master `
-  -DPICO_SDK_PATH=E:/projects/pico-sdk `
-  '-DPICO_TOOLCHAIN_PATH=C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin' `
-  -Dpicotool_DIR=E:/projects/picotool-2.3.1-x64-win/picotool `
-  -Dpioasm_DIR=E:/projects/pico-sdk-tools-2.3.1-x64-win/pioasm `
-  -DCMAKE_MAKE_PROGRAM=C:/Users/intel/AppData/Local/Microsoft/WinGet/Links/ninja.exe `
+  "-DREDPOINT_TINYUSB_PATH=$env:REDPOINT_TINYUSB_PATH" `
+  "-DPICO_SDK_PATH=$env:PICO_SDK_PATH" `
+  "-DPICO_TOOLCHAIN_PATH=$env:PICO_TOOLCHAIN_PATH" `
+  "-Dpicotool_DIR=$env:PICOTOOL_DIR" `
+  "-Dpioasm_DIR=$env:PIOASM_DIR" `
+  "-DCMAKE_MAKE_PROGRAM=$((Get-Command ninja).Source)" `
   -DCMAKE_BUILD_TYPE=MinSizeRel
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c2.py
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_c2.py
 ```
 
 The test uses only Python's standard library; another Python 3 interpreter is fine.
@@ -232,7 +234,7 @@ The config sector at XIP **0x10FFF000–0x10FFFFFF** is not included in ELF/UF2.
 
 ### Hardware acceptance and frozen A/B baseline
 
-User-confirmed on Windows/iPad: composite enumeration, NCM without Code 10,
+Hardware-verified on Windows/iPad: composite enumeration, NCM without Code 10,
 Windows HTTP 200/Chrome Configurator, iPad Safari/Chrome Configurator with
 automatic GET sync/Connected, and simultaneous iPad Wi-Fi Internet.
 The USB descriptors, endpoints, NCM source and netif configuration are frozen.
@@ -256,7 +258,7 @@ Check `ipconfig` for host 169.254/16 and no gateway provided by this device; ope
 stability, HID boot/report protocol, and iPad link-local access with Wi-Fi retained.
 USB descriptor analysis and a successful build do not establish hardware success.
 
-Milestone C physical input, Flash persistence and WS2812 are user-confirmed. C.1 native scrolling is user-confirmed; C.2 settings/default vertical direction and C.3 iPad display/touch operation are also user-confirmed.
+Milestone C physical input, Flash persistence and WS2812 are hardware-verified. C.1 native scrolling is hardware-verified; C.2 settings/default vertical direction and C.3 iPad display/touch operation are also hardware-verified.
 Power draw/suspend compliance,
 runtime stack/heap high-water marks, long-running network throughput, unique MACs
 and Windows compatibility across OS versions remain unverified.

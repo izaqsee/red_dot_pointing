@@ -6,7 +6,7 @@
 
 PagesはWeb Serial用の公開先です。USB Ethernet版のdevice-hosted assetsとは配信経路が異なります。
 公開済みPagesがローカルcheckoutと同じrevisionとは限りません。
-以下は既存workflowに対応する公開手順です。このdocumentation整理ではpush/deployやGitHub設定変更を行っていません。
+以下は既存workflowに対応する公開手順です。
 
 すべてのコマンドは、特記がなければrepository rootで実行します。
 [開発資料一覧](README.md) · [プロジェクト概要](../../README.md)
@@ -18,9 +18,9 @@ configure-pages / upload-pages-artifact / deploy-pagesを使い、**configurator
 CSS / JSはrelative pathなので、`https://<user>.github.io/<repository>/`のproject Pagesにも対応します。
 PagesのHTTPSはWeb Serialのsecure context要件を満たします。backendやbuild toolは不要です。
 
-人間がGitHub側で行う操作:
+Maintainer向けGitHub設定手順:
 
-1. GitHub repositoryを用意し、任意のremoteを設定して変更をpushする（この作業ではpushしていません）。
+1. GitHub repositoryを用意し、任意のremoteを設定して変更をpushする。
 2. repositoryの**Settings → Pages → Build and deployment → Source**で**GitHub Actions**を選ぶ。
 3. **Settings → Actions → General**でActionsと使用するGitHub公式Actionsが許可されていることを確認する。
    組織のpolicyでPages / OIDCが制限されている場合は管理者に確認する。
@@ -40,7 +40,7 @@ GitHubプランやrepository可視性に応じてPagesを利用可能なreposito
 ## EN
 
 Pages publishes the Web Serial frontend; it is a different delivery path from device-hosted USB Ethernet assets. The published revision may differ from the local checkout.
-The following procedure describes the existing workflow. This documentation refactor did not push/deploy or change GitHub settings.
+The following procedure describes the existing workflow.
 
 Run commands from the repository root unless stated otherwise.
 [Development index](README.md) · [Project overview](../../README.md)
@@ -50,9 +50,9 @@ Run commands from the repository root unless stated otherwise.
 [.github/workflows/pages.yml](../../.github/workflows/pages.yml) uses the official configure-pages / upload-pages-artifact / deploy-pages actions and publishes **only configurator/**.
 Relative CSS/JS paths support project Pages at `https://<user>.github.io/<repository>/`. Pages HTTPS satisfies Web Serial's secure-context requirement. No backend or build tool is needed.
 
-Manual GitHub steps:
+GitHub setup steps for maintainers:
 
-1. Create a repository, configure the desired remote, and push changes when publication is intended. No push was performed during this task.
+1. Create a repository, configure the desired remote, and push changes when publication is intended.
 2. In **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions**.
 3. Under **Settings → Actions → General**, allow Actions and the required official actions. Consult the organization administrator if policy restricts Pages or OIDC.
 4. Place the workflow on the default branch. The workflow detects that branch rather than hard-coding main.

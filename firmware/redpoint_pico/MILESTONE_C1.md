@@ -4,11 +4,11 @@
 
 ## JA
 
-> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下はC.1実装時点の記録です。
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作は実機確認済みです。以下はC.1実装時点の記録です。
 
 ### 動作と範囲
 
-A/B/CはユーザーがWindows/iPadで確認済みです。C.1はUSB/network/frontend/command core/Flash/LEDを維持し、Pico入力/HID backendだけを変更しました。Arduino版は歴史的な動作参照です。
+A/B/CはWindows/iPadで実機確認済みです。C.1はUSB/network/frontend/command core/Flash/LEDを維持し、Pico入力/HID backendだけを変更しました。Arduino版は歴史的な動作参照です。
 logical Middleをscroll modifierとし、HID middle-button pressは送りません。PS/2 decode、logical X=raw dy/Y=raw dx、invertを適用後、Middle ownerが1つ以上ならY→Wheel、X→Horizontal Pan、Mouse X/Y=0。Middleなしのpointer動作は従来どおりでWheel/Pan=0。click passthroughは追加しません。
 各軸でmovement×middleSensitivityを蓄積し、整数部を0方向へ切り捨てて±127へclamp、小数部だけcarryします。既存pointerと同様に、飽和した整数超過は後から再送しません。感度0はscrollなし。config変更消費とmode開始/終了で全fractionをclearし、移動のない切替も扱います。
 共有action engineとlatch/releaseは不変で、どのphysical buttonもMiddleを所有できます。最後のowner解放までscroll継続し、ownerが残るhandoffではfractionを保持します。scroll中もLeft/Rightやkeyboard shortcutを使えます。
@@ -29,11 +29,11 @@ logical Middleをscroll modifierとし、HID middle-button pressは送りませ�
 既にconfigureしたtargetをbuildします。
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
+cmake --build firmware/redpoint_pico/build --parallel 8
 ```
 
 ELF link/UF2生成成功、warningなし。Flash 137,020 B（16,380 KiBの0.82%）、RAM 41,824 B＋SCRATCH_Y stack 4,096 B。runtime high-waterではなくlinker allocationです。
-UF2は`E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`、274,432 B。config sector 0x10FFF000–0x10FFFFFFはELF/UF2外、保存形式とSAVE semanticsは不変。
+UF2は`firmware/redpoint_pico/build/redpoint_reva.uf2`、274,432 B。config sector 0x10FFF000–0x10FFFFFFはELF/UF2外、保存形式とSAVE semanticsは不変。
 
 ```text
 python firmware/redpoint_pico/tests/run_integration.py
@@ -48,7 +48,7 @@ Node実行時のREDPOINT_PICO_GET_RESPONSEは実lwIP統合testが生成したbui
 
 ### C.1当時の実機確認項目
 
-ユーザーがUF2を書き込んだ後、Windows/iPadで:
+UF2を書き込んだ後、Windows/iPadで:
 
 1. USB4機能、HTTP接続、Wi-Fi併存、通常pointer移動を確認。
 2. 縦横scroll可能なページでMiddleを保持し、cursorが動かず両軸scrollし、OS autoscroll UIが出ないことを確認。
@@ -57,15 +57,15 @@ Node実行時のREDPOINT_PICO_GET_RESPONSEは実lwIP統合testが生成したbui
 5. held中のmapping変更、latched release、mouse/keyboard併用、SET/RESETのfraction resetとstuck防止を確認。
 6. suspend/resume、抜差し中の操作・releaseで履歴burstやstuckがないこと、SAVE/reboot persistenceも再確認。
 
-当時はC.1の物理scroll、OS/applicationのPan対応・方向、高負荷USB timingが未検証でした。agentによるpush/uploadはありません。A/B/Cの確認だけでC.1成功とはせず、後日のユーザー確認を別途記録しています。
+当時はC.1の物理scroll、OS/applicationのPan対応・方向、高負荷USB timingが未検証でした。A/B/Cの確認だけでC.1成功とはせず、後日の実機確認を別途記録しています。
 
 ## EN
 
-> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+> Current verification status (2026-09-24): Functionality through C.2 and C.3 iPad display/touch operation have been verified on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
 
 ### Behavior and scope
 
-A/B/C were confirmed on Windows/iPad by the user. C.1 retains the USB,
+A/B/C were confirmed on Windows/iPad. C.1 retains the USB,
 network, frontend, command core, Flash and LED architecture. Only the Pico
 input/HID backend changes; the Arduino firmware remains the historical reference.
 
@@ -108,14 +108,14 @@ normal report protocol. No descriptor redesign or boot-protocol emulation is add
 Build the existing configured target:
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
+cmake --build firmware/redpoint_pico/build --parallel 8
 ```
 
 Successful final ELF link and UF2 generation; no build warnings.
 Flash: 137,020 B (0.82% of 16,380 KiB firmware region).
 RAM: 41,824 B, plus 4,096 B main stack in SCRATCH_Y.
 These are linker allocations, not runtime high-water measurements.
-UF2: `E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`
+UF2: `firmware/redpoint_pico/build/redpoint_reva.uf2`
 (274,432 B). Flash config sector remains 0x10FFF000–0x10FFFFFF,
 excluded from ELF/UF2; storage format and SAVE semantics unchanged.
 
@@ -138,9 +138,9 @@ freeze checks and C's Flash/SRAM/stack checks pass. Existing firmware host tests
 fsdata equality and HTTP compile checks pass. Configurator Node tests pass 55/55 (zero skipped). The compile-only check retains two
 pre-existing float-equality warnings in unchanged config_command.cpp.
 
-### Hardware verification remaining for C.1
+### Hardware verification outstanding at the C.1 implementation stage
 
-After the user uploads the UF2, verify on Windows and iPad:
+After installing the UF2, verify on Windows and iPad:
 
 1. All four USB functions enumerate; Configurator connects over HTTP and Wi-Fi
    coexistence is unchanged. Normal TrackPoint motion moves the pointer.
@@ -156,5 +156,4 @@ After the user uploads the UF2, verify on Windows and iPad:
    backlog burst and no stuck buttons/keys. Recheck SAVE/reboot persistence.
 
 C.1 physical scrolling, OS/application horizontal-pan support/direction, and actual
-USB timing under sustained traffic remain unverified. No upload or remote push
-was performed. Prior A/B/C hardware confirmation does not establish C.1 success.
+USB timing under sustained traffic were unverified at implementation time. Prior A/B/C hardware confirmation alone did not establish C.1 success; subsequent hardware verification is recorded separately.

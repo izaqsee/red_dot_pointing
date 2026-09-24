@@ -4,10 +4,9 @@
 
 ## JA
 
-> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作は実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
 
-C.1 native scrollingはWindows/iPadでユーザー実機確認済み。C.2はローカルbuildとhost testまで完了。
-remote push・hardware uploadは行っていない。
+C.1 native scrollingはWindows/iPadで実機確認済み。C.2はローカルbuildとhost testまで完了。
 
 ### Canonical Config schema
 
@@ -30,7 +29,7 @@ scroll中はMouse X/Y = 0、HID Middle press = 0。
 
 base polarityはPan +logical X、Wheel -logical Y。
 VerticalはC.1が逆だったという実機結果に基づき反転した。
-Horizontalはユーザーの「期待どおりだった」という追加確認に基づき維持した。
+Horizontalは期待どおりの方向であることが実機で確認されたため維持した。
 Invert OFFをstick方向へviewが移動する基準とし、OS側Natural Scrollは対象外。
 各Invertはそのgroup/axisだけを反転する。
 
@@ -84,7 +83,7 @@ CRC/値/長さ/reservedなど不正なら全defaultへfallbackする。
 Pointer / Wheel / Buttonsの3カード。既存CSS/layout、Connection、status、shortcut recorderを維持。
 変更したapp.jsはfield一覧、validConfig、Wheel fieldsetのenable/disableだけ。
 createProtocol/createHeartbeat/HTTP-first/Serial fallback等は関数hashでC.1と一致確認。
-app.js/index.html全体hashのfreezeだけを今回の許可範囲に合わせて外し、
+app.js/index.html全体hashのfreezeだけをC.2のUI/schema変更に合わせて外し、
 style.css/shortcuts.js全体hashとtransport/state-machine関数hashを維持する。
 生成fsdataと最終ELF内のassetsはcurrent Configuratorとbyte一致。
 
@@ -103,7 +102,7 @@ style.css/shortcuts.js全体hashとtransport/state-machine関数hashを維持す
 ### Build / tests
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
+cmake --build firmware/redpoint_pico/build --parallel 8
 ```
 
 ELF link / UF2生成成功、通常target buildにwarningなし。
@@ -124,11 +123,11 @@ Flash **139,732 B / 16,380 KiB (0.83%)**。
 RAM **41,840 B / 256 KiB (15.96%)**、別途Scratch Y main stack **4,096 B**。
 linker allocationでありruntime high-water値ではない。
 UF2 **279,552 B**:
-`E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`
+`firmware/redpoint_pico/build/redpoint_reva.uf2`
 
 ### Hardware acceptance / unverified
 
-1. 既存保存値を記録してからユーザーがUF2をupload。HTTPでConnected、Pointer/Wheel/Buttons表示を確認。
+1. 既存保存値を記録してからUF2を書き込む。HTTPでConnected、Pointer/Wheel/Buttons表示を確認。
 2. v2のPointer/Actionを保持し、Wheel両軸が旧middleSensitivity、Wheel Invertが両方OFFであることをGETで確認。
 3. OSの追加反転を考慮し、Middle保持で上下左右のstick方向へviewが動くか確認。横方向はC.1から変わらないこと。
 4. Pointer InvertがWheelへ影響せず、Wheel InvertがPointerへ影響しないことを確認。
@@ -137,14 +136,14 @@ UF2 **279,552 B**:
 7. RESET、複数Middle owner、mapping変更中release、suspend/resumeで不正押下やscroll履歴再生がないことを確認。
 8. NCM/CDC/両HID、iPad Wi-Fi併存、status LED、SAVE失敗/再試行など既存動作も確認。
 
-C.2の実機方向・migration・persisted rebootは未検証。Arduino targetの実機/buildは今回対象外。
+C.2の実機方向・migration・persisted rebootは未検証。Arduino targetの実機/buildは当該Milestoneの対象外。
 UIイベント/markupは自動検証済みだが、ブラウザツールがfile URLを拒否したため表示の目視確認は未実施。
 
 ## EN
 
-> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+> Current verification status (2026-09-24): Functionality through C.2 and C.3 iPad display/touch operation have been verified on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
 
-C.1 native scrolling had already been user-verified on Windows/iPad. At implementation time, C.2 completed local builds and host tests. No remote push or hardware upload was performed.
+C.1 native scrolling had already been hardware-verified on Windows/iPad. At implementation time, C.2 completed local builds and host tests.
 
 ### Canonical Config schema
 
@@ -162,7 +161,7 @@ These ten fields are the only internal state. HTTP and CDC use the same config_c
 
 PS/2 decoding, sanity checks, clamping and logical X = raw dy / logical Y = raw dx are unchanged. Without a logical Middle owner, only Pointer sensitivity/inversion affects Mouse X/Y. With an owner, only Wheel settings apply: X → Pan, Y → Wheel. During scrolling, Mouse X/Y = 0 and HID Middle press = 0.
 
-Base polarity is Pan +logical X, Wheel -logical Y. Vertical polarity was reversed based on hardware confirmation that C.1 was backwards. Horizontal polarity was retained after the user confirmed it was correct. With Invert OFF, the view moves in the stick direction; OS Natural Scroll is outside this definition. Each inversion affects only its own group/axis.
+Base polarity is Pan +logical X, Wheel -logical Y. Vertical polarity was reversed based on hardware confirmation that C.1 was backwards. Horizontal polarity was retained after hardware verification confirmed it was correct. With Invert OFF, the view moves in the stick direction; OS Natural Scroll is outside this definition. Each inversion affects only its own group/axis.
 
 Wheel X/Y independently accumulate logical displacement × sensitivity and send only the integral part. Zero disables that axis. Fractions carry; output clamps to [-127,127]. Saturated integer excess is discarded, never replayed. Pointer and Wheel fractions are separate. Mode transitions and main-loop consumption of SET/RESET clear all fractions as before. Owner/refcount, press-time action latching, bounded HID queues and recovery are unchanged.
 
@@ -198,7 +197,7 @@ Old Pages can connect to new firmware, but cannot display/edit independent Wheel
 
 ### Configurator
 
-Three cards: Pointer / Wheel / Buttons. Existing CSS/layout, Connection, status and shortcut recorder remain. app.js changes are limited to field lists, validConfig and Wheel fieldset enable/disable. Function hashes confirm createProtocol/createHeartbeat/HTTP-first/Serial fallback match C.1. Only whole-file app.js/index.html freezes were relaxed for the authorized changes; style.css/shortcuts.js and transport/state-machine function hashes remain frozen. Generated fsdata and assets in the final ELF match current Configurator bytes.
+Three cards: Pointer / Wheel / Buttons. Existing CSS/layout, Connection, status and shortcut recorder remain. app.js changes are limited to field lists, validConfig and Wheel fieldset enable/disable. Function hashes confirm createProtocol/createHeartbeat/HTTP-first/Serial fallback match C.1. Only whole-file app.js/index.html freezes were relaxed for the C.2 UI/schema changes; style.css/shortcuts.js and transport/state-machine function hashes remain frozen. Generated fsdata and assets in the final ELF match current Configurator bytes.
 
 ### Changed files
 
@@ -215,7 +214,7 @@ Three cards: Pointer / Wheel / Buttons. Existing CSS/layout, Connection, status 
 ### Build / tests
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
+cmake --build firmware/redpoint_pico/build --parallel 8
 ```
 
 ELF linking and UF2 generation succeeded; normal target build had no warnings.
@@ -231,11 +230,11 @@ ELF linking and UF2 generation succeeded; normal target build had no warnings.
 
 Node used REDPOINT_PICO_GET_RESPONSE=build/host-get-response.txt to verify HTTP auto-connect with real host-lwIP GET/PING responses. Compile-only emitted three -Wfloat-equal warnings for intentional exact baseline comparison, including the added Wheel Y field.
 
-Flash **139,732 B / 16,380 KiB (0.83%)**. RAM **41,840 B / 256 KiB (15.96%)**, plus Scratch Y main stack **4,096 B**. These are linker allocations, not runtime high-water marks. UF2 **279,552 B**: `E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`.
+Flash **139,732 B / 16,380 KiB (0.83%)**. RAM **41,840 B / 256 KiB (15.96%)**, plus Scratch Y main stack **4,096 B**. These are linker allocations, not runtime high-water marks. UF2 **279,552 B**: `firmware/redpoint_pico/build/redpoint_reva.uf2`.
 
 ### Hardware acceptance / unverified at implementation time
 
-1. Record saved settings before user upload. Verify HTTP Connected and Pointer/Wheel/Buttons.
+1. Record saved settings before installing the UF2. Verify HTTP Connected and Pointer/Wheel/Buttons.
 2. GET must retain v2 Pointer/actions, set both Wheel sensitivities to old middleSensitivity and both Wheel Invert values OFF.
 3. Accounting for OS inversion, hold Middle and check view movement follows the stick in all directions; horizontal behavior must match C.1.
 4. Verify Pointer inversion does not affect Wheel and vice versa.

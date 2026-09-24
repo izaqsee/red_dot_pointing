@@ -13,8 +13,8 @@ LEDの実機検証は[専用チェックリスト](../status-led-validation.md)�
 Normal / Middle感度やMiddle clickのbaselineはArduino/旧firmware向けです。
 現行PicoではPointer/Wheelの独立設定、Middle保持によるWheel/Pan、v1/v2→v3移行として読み替え、
 具体的な現行期待値は[C.2報告](../../firmware/redpoint_pico/MILESTONE_C2.md)を使ってください。
-C.2までユーザー実機確認済みですが、チェックリストは将来変更時の回帰確認用として残しています。
-C.3のiPad実機での表示・touch操作もユーザー確認済みです。
+C.2まで実機確認済みですが、チェックリストは将来変更時の回帰確認用として残しています。
+C.3のiPad実機での表示・touch操作も実機確認済みです。
 
 すべてのコマンドは、特記がなければrepository rootで実行します。
 [開発資料一覧](README.md) · [プロジェクト概要](../../README.md)
@@ -82,7 +82,7 @@ Pagesのproject URLでのRecorder、SAVE直後のPS/2再同期とdebugを確認�
 Use the [C.3 report](../../firmware/redpoint_pico/MILESTONE_C3.md) as the current Pico SDK validation entry point, the [A/B/C/C.1/C.2 regression checker](../../firmware/redpoint_pico/tests/check_milestone_c3.py), and the [HTTP/physical-input host integration test](../../firmware/redpoint_pico/tests/run_integration.py). The [dedicated LED checklist](../status-led-validation.md) is authoritative for LED hardware validation.
 
 The tests/checklists below were moved from the README. Normal/Middle sensitivity and Middle-click baseline references describe Arduino/older firmware. For current Pico firmware, use independent Pointer/Wheel settings, Middle-held Wheel/Pan, and v1/v2→v3 migration; exact expectations are in [C.2](../../firmware/redpoint_pico/MILESTONE_C2.md).
-Features through C.2 and C.3 display/touch operation on a physical iPad are user-verified. Checklists remain for future regression testing.
+Features through C.2 and C.3 display/touch operation on a physical iPad are hardware-verified. Checklists remain for future regression testing.
 
 Run commands from repository root unless stated otherwise.
 [Development index](README.md) · [Project overview](../../README.md)

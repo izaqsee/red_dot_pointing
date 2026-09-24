@@ -4,11 +4,6 @@
 
 ## JA
 
-自動テストは実際のLED電気信号、明るさ、PS/2 packet drop、HID stuckを検証しません。
-この変更では実機upload／remote pushは実施していません。
-人間がローカルfirmwareと新Configuratorを準備して以下を確認してください。
-GitHub Pagesはこのローカル変更をpublishするまでは更新されません。
-
 1. RGB solder jumperがbridgeされたYD RP2040を接続。WHITE → BLUEを確認。
 2. 新ConfiguratorでConnect。GET同期／PING後GREENを確認。
 3. pointerSensitivityまたはbutton actionを変更。YELLOWを確認。
@@ -48,8 +43,6 @@ PIO／pixel buffer確保に失敗した場合はLED送信を停止し、既存�
 実機のLED色・操作感・packet drop・stuckについては上記手順での確認が残っています。
 
 ## EN
-
-Automated tests do not verify electrical LED signals, brightness, PS/2 packet drops, or stuck HID inputs. No hardware upload or remote push was performed during the original implementation. Prepare the firmware and Configurator locally and use the checklist below. GitHub Pages does not update until local changes are published.
 
 1. Connect a YD RP2040 with the RGB solder jumper bridged. Check WHITE → BLUE.
 2. Connect the Configurator. GET synchronization / PING should produce GREEN.

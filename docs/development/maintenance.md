@@ -47,7 +47,7 @@ EEPROM領域やFlash容量の変更、全消去を伴う書き込みでは保存
 設定値・Serial dataの外部送信、analytics、localStorageへの保存は行いません。
 すべて同梱のローカルassetを使い、CSPはsame-originへのHTTP API通信だけを許可します。外部へのデバイスデータ送信は行いません。
 GitHub Pages版でもデバイスデータは外部serverへ送りません。GitHubには静的ページの通常の取得だけが発生します。
-既存のPages workflowをそのまま利用します。この変更ではpush／deployやGitHub側の設定変更は行いません。
+既存のPages workflowをそのまま利用します。
 
 
 ### 通信とエラー時の動作
@@ -141,7 +141,7 @@ Save success is reported only after commit and Flash readback comparison. The UI
 
 Flash operations briefly interrupt input/PS/2/HID processing. Save while stationary and keep USB connected until completion. After writing, discard partial frames/FIFO and resynchronize at the packet gap. A single sector is not power-loss atomic; interruption can lose prior settings, with invalid records falling back on reboot. Redundancy and wear leveling are unimplemented. Changing EEPROM layout/Flash size or performing a full erase may lose settings.
 
-No settings/Serial data are sent externally or stored in analytics/localStorage. All assets are bundled; CSP permits same-origin API communication only. On Pages, GitHub receives ordinary static-page requests, not device data. Existing Pages workflow remains; this refactor performs no push/deploy or GitHub-setting changes.
+No settings/Serial data are sent externally or stored in analytics/localStorage. All assets are bundled; CSP permits same-origin API communication only. On Pages, GitHub receives ordinary static-page requests, not device data. The existing Pages workflow remains in use.
 
 ### Communication and errors
 

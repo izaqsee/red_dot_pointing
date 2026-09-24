@@ -4,9 +4,9 @@
 
 ## JA
 
-> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下はMilestone B時点の履歴です。
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作は実機確認済みです。以下はMilestone B時点の履歴です。
 
-A/Bはその後ユーザーが実機確認しました。後続のhardware backendは[MILESTONE_C.md](MILESTONE_C.md)を参照してください。
+A/Bはその後実機確認済みです。後続のhardware backendは[MILESTONE_C.md](MILESTONE_C.md)を参照してください。
 Aで確認済みだったCDC-NCM/CDC Serial/HID Mouse/HID Keyboard、169.254.7.1/16、gateway/DHCPなし、Windows Code10なし/HTTP200、iPad Safari HTTPとWi-Fi併存をBでも維持しました。descriptor/endpoint/NCM/netifは変更なし。milestone_a_freeze.jsonは当時のdescriptor/HID/USB/frontend hashes、reference.jsonは外部TinyUSB由来の検査を保持します。product stringもfreezeのためAのままです。
 
 ### Static assetsとcommand経路
@@ -37,14 +37,14 @@ src/config_cdc.cppでAのecho taskをTinyUSB stream adapterへ置換。Arduino S
 READMEのconfigure後、repo rootで実行:
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_b.py
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/run_integration.py
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_b.py
+python firmware/redpoint_pico/tests/run_integration.py
 $env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/host-get-response.txt).Path
-& 'C:/nvm4w/nodejs/node.exe' --test tests/configurator.test.cjs
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/run_firmware_tests.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/http_fsdata_test.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
+node --test tests/configurator.test.cjs
+python tests/run_firmware_tests.py
+python tests/http_fsdata_test.py
+python tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
 ```
 
 - ARM MinSizeRelのELF/UF2 link成功、warningなし。TinyUSB exampleのC専用warning flagsだけをC++から除き、意図的baseline float一致比較はsource単位で除外。
@@ -53,13 +53,13 @@ $env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/hos
 - native testが実GET/PINGをcapture。Node fixtureは変更前UIへ渡し、Serial/secure contextなしでsame-origin probe→GET→Connectedを検証。先に統合testと環境変数指定が必要、なければskip。最終55/55 PASS、failure/skipなし。
 - 既存firmware host（actions/status/storage/HTTP）、fsdataもPASS。独立ARM compile-onlyもPASSですが既存float完全一致warningは残ります。
 
-Host TCP testはsoftware処理の検証で、RP2040 timing/USB電気信号の検証ではありません。agentはBをuploadしていません。
-出力は`E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`。
+Host TCP testはsoftware処理の検証で、RP2040 timing/USB電気信号の検証ではありません。当該Milestoneの実装時点では実機検証未実施でした。
+出力は`firmware/redpoint_pico/build/redpoint_reva.uf2`。
 B時点のFlash/BIN 130,308 B（2 MiBの6.21%）、RAM 39,156 B（256 KiBの14.94%）＋Scratch Y stack 2,048 B、UF2 261,120 B。runtime heap/stack測定ではありません。
 
-### B時点のユーザー実機確認手順
+### B時点の実機確認手順
 
-1. 準備できたらユーザーがUF2を書き込む。
+1. UF2を書き込む。
 2. USB4機能とNCM Code10なしを確認。
 3. iPad Safariで169.254.7.1を開き、permission/Serial/WebHIDなしで全UIが表示され、USB Ethernet · IPv4 Link-Local / Connectedになること、Wi-Fiも維持することを確認。
 4. Windowsで5 static routes、GETのHTTP200/config frame、PINGをnetwork panelで確認。次でも確認可能:
@@ -87,12 +87,12 @@ configurator/*、config_command.cpp、config_http.cpp、redpoint_httpd.cpp、USB
 
 ## EN
 
-> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+> Current verification status (2026-09-24): Functionality through C.2 and C.3 iPad display/touch operation have been verified on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
 
-Historical B report. A/B have since been hardware-verified by the user. The current
+Historical B report. A/B have since been hardware-verified. The current
 target includes Milestone C; see [MILESTONE_C.md](MILESTONE_C.md).
 
-Milestone A was confirmed on hardware by the user: CDC-NCM + CDC Serial + HID
+Milestone A was confirmed on hardware: CDC-NCM + CDC Serial + HID
 Mouse + HID Keyboard, 169.254.7.1/16, no gateway/DHCP, Windows without NCM Code 10,
 Windows HTTP 200, iPad Safari HTTP and simultaneous Wi-Fi Internet. None of those
 descriptors, endpoints, NCM sources or netif settings were changed for B.
@@ -164,14 +164,14 @@ It does not introduce another config state or another command parser.
 Use the configure command in README.md, then from the repo root:
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_b.py
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/run_integration.py
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_b.py
+python firmware/redpoint_pico/tests/run_integration.py
 $env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/host-get-response.txt).Path
-& 'C:/nvm4w/nodejs/node.exe' --test tests/configurator.test.cjs
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/run_firmware_tests.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/http_fsdata_test.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
+node --test tests/configurator.test.cjs
+python tests/run_firmware_tests.py
+python tests/http_fsdata_test.py
+python tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
 ```
 
 - ARM MinSizeRel: final ELF/UF2 link succeeds without warnings. TinyUSB's C-only
@@ -195,16 +195,16 @@ $env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/hos
   also passes; it retains its pre-existing exact-float-comparison warnings.
 
 The host TCP test validates software processing, not RP2040 timing or physical USB.
-Milestone B has not been uploaded or tested on hardware by the agent.
+At the Milestone B implementation stage, hardware validation had not yet been performed.
 
-Output: `E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`.
+Output: `firmware/redpoint_pico/build/redpoint_reva.uf2`.
 Flash/BIN: **130,308 B (6.21% of 2 MiB)**. RAM region: **39,156 B (14.94% of
 256 KiB)** plus **2,048 B** Scratch Y stack reservation. UF2 container: **261,120 B**.
 These are linker allocations, not runtime heap/stack measurements.
 
-### Hardware confirmation by the user
+### Hardware confirmation
 
-1. When ready, install this UF2 yourself; no upload has been performed here.
+1. Install the UF2.
 2. Confirm all four USB functions remain present, with no NCM Code 10.
 3. On iPad Safari open `http://169.254.7.1/`. The full Configurator should load and
    become **Connected**, showing `USB Ethernet · IPv4 Link-Local`, without a device

@@ -10,7 +10,7 @@ C.3のUIはPointer / Wheel / Buttonsで、Keyboard Shortcutを選んだ行のRec
 詳細は[C.2](../../firmware/redpoint_pico/MILESTONE_C2.md)・[C.3](../../firmware/redpoint_pico/MILESTONE_C3.md)を参照してください。
 
 以下はREADMEにあった起動・自動接続・Recorder詳細を保存したものです。
-「統合作業は残っている」「Middle sensitivity」「旧4項目firmwareでも使用可能」、
+「Middle sensitivity」「旧4項目firmwareでも使用可能」、
 「デバイス確認値の別表示」は**移行前の状態**を記録した記述です。
 現行Picoでは統合済み、Pointer/Wheel設定は独立、Middleはnative Wheel/Panのmodifierです。
 現行UIはC.2 schemaを要求し、確認値の一部はscreen reader向けに保持しています。
@@ -29,8 +29,8 @@ HTTP modeはpermission dialogやsecure contextを必要とせず、iPadのよう
 HTTP modeのDisconnectはlogical session切断で、ConnectでGET同期から再接続します。
 FrontendにデバイスIPは固定していません。
 
-HTTP server側のlwIP adapterとstatic asset生成は追加済みですが、現在のArduino sketch単独ではEthernetを有効化しません。
-実機確認済みのTinyUSB network実験とHID／Flash／LEDを1つのbuildへ統合する作業は残っています。
+現行Pico SDK targetでは、lwIP HTTP adapter、static asset生成、Ethernet、HID、Flash、LEDを統合済みです（C.2）。
+Arduino sketch単独ではEthernetを有効化しません。
 構成・CMake組込・実機確認手順は[USB Ethernet integration](../../docs/usb-ethernet.md)を参照してください。
 
 repo直下で、Pythonによるローカルの静的ファイル配信を起動します。
@@ -130,7 +130,7 @@ Run commands at repository root unless stated otherwise.
 `configurator/` is plain HTML/CSS/JavaScript: no framework, npm install, frontend build, backend processing, external API, or CDN is needed for the static frontend. On startup it POSTs the GET command to same-origin `api/command`. A valid RedPoint response selects **USB Ethernet HTTP mode** automatically; otherwise it falls back to **Web Serial API**.
 HTTP needs neither a permission dialog nor a secure context and works on devices such as iPad without Web Serial. Disconnect ends a logical session; Connect repeats GET synchronization. The frontend does not hard-code the device IP.
 
-Historical integration note: the lwIP adapter and static generator had been added, but the Arduino sketch alone did not enable Ethernet; integrating the verified TinyUSB network experiment with HID/Flash/LED was still outstanding. That integrated Pico target now exists. See [USB Ethernet integration](../../docs/usb-ethernet.md) for architecture, CMake integration, and hardware checks.
+The current Pico SDK target integrates the lwIP HTTP adapter, static generator, Ethernet, HID, Flash and LED (C.2). The Arduino sketch alone does not enable Ethernet. See [USB Ethernet integration](../../docs/usb-ethernet.md) for architecture, CMake integration, and hardware checks.
 
 Serve local static files from the repo root:
 

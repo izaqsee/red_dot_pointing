@@ -4,11 +4,11 @@
 
 ## JA
 
-> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作は実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
 
 USB composite、descriptor、endpoint、current TinyUSB NCM、169.254.7.1/16、
 gatewayなし／DHCPなし、device-hosted Configurator、HTTP adapter、command core、
-frontendはA/Bの実機確認済み構成を維持。remote push／hardware uploadは未実施。
+frontendはA/Bの実機確認済み構成を維持。
 
 ### 移植元とbackend
 
@@ -71,7 +71,7 @@ SAVEでfractional remainder自体はresetしない（Arduinoと同じ）。
 
 ### Flash layoutと根拠
 
-ユーザーのpicotool実測：**16384 KiB (16 MiB)**、
+picotoolによる実測：**16384 KiB (16 MiB)**、
 flash unique ID **0x500315198093931C**、B binary end **0x1001FD04**。
 これはflash unique IDであり、RDID/JEDEC容量byteとは別物。
 
@@ -127,15 +127,15 @@ PINGの2秒heartbeatはfrontendを変更せず維持する。
 READMEのconfigure commandへインストール済みpioasm指定を含めた。既存buildからは：
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' -S firmware/redpoint_pico -B firmware/redpoint_pico/build -Dpioasm_DIR=E:/projects/pico-sdk-tools-2.3.1-x64-win/pioasm
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c.py
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/run_integration.py
+cmake -S firmware/redpoint_pico -B firmware/redpoint_pico/build "-Dpioasm_DIR=$env:PIOASM_DIR"
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_c.py
+python firmware/redpoint_pico/tests/run_integration.py
 $env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/host-get-response.txt).Path
-& 'C:/nvm4w/nodejs/node.exe' --test tests/configurator.test.cjs
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/run_firmware_tests.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/http_fsdata_test.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
+node --test tests/configurator.test.cjs
+python tests/run_firmware_tests.py
+python tests/http_fsdata_test.py
+python tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
 ```
 
 検査対象：production PS/2 frame/FIFO/parity/stop/gap/sanity、axis/invert/sensitivity/
@@ -160,7 +160,7 @@ fsdata unit test PASS、HTTP/static独立compile検査PASS。独立compile検査
 ### 実機確認手順／未検証事項
 
 1. 必要な既存設定をGETで控える。16 MiB末尾以外に保存したArduino設定の自動importはない。
-2. ユーザー側でUF2を書き込んだ後、USB4機能・Windows NCM Code10なし・HTTP・iPad Wi-Fi併存を再確認。
+2. UF2を書き込んだ後、USB4機能・Windows NCM Code10なし・HTTP・iPad Wi-Fi併存を再確認。
 3. WHITE→BLUE、Configurator ConnectedでGREEN、2秒heartbeatでGREEN維持、切断後6秒でBLUE。
 4. TrackPoint X/Y方向、invert、感度0/0.5/1/高感度、低感度時の蓄積、logical Middleでの低感度を確認。
 5. L/M/Rのdebounce、Mouse/key/disabled割当、同じactionの2ボタン同時押下、押下中のSETと
@@ -172,7 +172,7 @@ fsdata unit test PASS、HTTP/static独立compile検査PASS。独立compile検査
 9. HTTP asset load＋入力＋heartbeat＋SAVEの同時負荷、実Flash erase時間、stack/heap余裕、
    長時間動作、USB suspend消費電流を測定する。
 
-このターンではhardware upload／実機動作確認はしていない。RDID応答、実erase/readback、
+当該Milestoneの実装時点では実機検証未実施でした。RDID応答、実erase/readback、
 WS2812波形／配線、PS/2電気的timing、入力レイテンシ、電源断復旧と高負荷時性能は未検証。
 
 ### 変更ファイル
@@ -192,9 +192,9 @@ static generator、frontend、`config_command.cpp`、`config_http.cpp`、record 
 
 ## EN
 
-> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+> Current verification status (2026-09-24): Functionality through C.2 and C.3 iPad display/touch operation have been verified on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
 
-The hardware-verified A/B USB composite, descriptors, endpoints, current TinyUSB NCM, 169.254.7.1/16 without gateway/DHCP, device-hosted Configurator, HTTP adapter, command core and frontend were retained. No remote push or hardware upload was performed.
+The hardware-verified A/B USB composite, descriptors, endpoints, current TinyUSB NCM, 169.254.7.1/16 without gateway/DHCP, device-hosted Configurator, HTTP adapter, command core and frontend were retained.
 
 ### Porting references and backends
 
@@ -238,7 +238,7 @@ The command core does not directly alter input state. GPIO IRQ only captures bit
 
 ### Flash layout and rationale
 
-User picotool measurement: **16384 KiB (16 MiB)**, Flash unique ID **0x500315198093931C**, B binary end **0x1001FD04**. The unique ID is distinct from the RDID/JEDEC capacity byte.
+picotool measurement: **16384 KiB (16 MiB)**, Flash unique ID **0x500315198093931C**, B binary end **0x1001FD04**. The unique ID is distinct from the RDID/JEDEC capacity byte.
 
 | Region | Offset | XIP address |
 | --- | --- | --- |
@@ -270,15 +270,15 @@ WHITE boot, BLUE normal, GREEN activity (6 s), YELLOW unsaved, PURPLE saving (at
 The README configure command now includes the installed pioasm path. From an existing build:
 
 ```powershell
-& 'C:/Program Files/CMake/bin/cmake.exe' -S firmware/redpoint_pico -B firmware/redpoint_pico/build -Dpioasm_DIR=E:/projects/pico-sdk-tools-2.3.1-x64-win/pioasm
-& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c.py
-& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/run_integration.py
+cmake -S firmware/redpoint_pico -B firmware/redpoint_pico/build "-Dpioasm_DIR=$env:PIOASM_DIR"
+cmake --build firmware/redpoint_pico/build --parallel 8
+python firmware/redpoint_pico/tests/check_milestone_c.py
+python firmware/redpoint_pico/tests/run_integration.py
 $env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/host-get-response.txt).Path
-& 'C:/nvm4w/nodejs/node.exe' --test tests/configurator.test.cjs
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/run_firmware_tests.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/http_fsdata_test.py
-& 'C:/Program Files/Inkscape/bin/python.exe' tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
+node --test tests/configurator.test.cjs
+python tests/run_firmware_tests.py
+python tests/http_fsdata_test.py
+python tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
 ```
 
 Coverage includes production PS/2 frame/FIFO/parity/stop/gap/sanity, axis/inversion/sensitivity/fractions/config reset, debounce/startup latch, disabled/mouse/key actions, shared owners/modifiers, USB busy/suspend, overflow releases, storage encoding/CRC/v1/reboot/no-op/readback failure/resync, LED state/priority/timers/latch. Real lwIP TCP/httpd tests cover five static paths, HTTP POST, HTTP/CDC effects on physical motion, SAVE success/failure and malformed rejection. Only HAL is mocked; runtime/core/storage/state sources are production code. Real Flash/GPIO/PIO drivers are ARM compiled/linked; electrical behavior needs hardware validation.
@@ -290,7 +290,7 @@ Results: final ARM build passed without warnings; Node **55/55 PASS**, none skip
 ### Hardware acceptance / unverified at implementation time
 
 1. Record required settings using GET; Arduino settings outside the 16 MiB end sector are not imported automatically.
-2. After user upload, recheck all four USB functions, Windows NCM without Code 10, HTTP and iPad Wi-Fi coexistence.
+2. After installing the UF2, recheck all four USB functions, Windows NCM without Code 10, HTTP and iPad Wi-Fi coexistence.
 3. Check WHITE→BLUE, GREEN on Connected, retained by 2-second heartbeat, then BLUE 6 seconds after disconnect.
 4. Check TrackPoint axes/inversion, sensitivity 0/0.5/1/high, low-sensitivity accumulation and logical Middle low sensitivity.
 5. Check L/M/R debounce, mouse/key/disabled mappings, two owners of one action, SET while held followed by original-action release, shared modifiers and releases during suspend without stuck state after resume.
@@ -299,7 +299,7 @@ Results: final ARM build passed without warnings; Node **55/55 PASS**, none skip
 8. Move TrackPoint during SAVE; check no abnormal motion from partial frames after recovery.
 9. Measure concurrent assets/input/heartbeat/SAVE, real erase time, stack/heap margin, long-run operation and USB suspend current.
 
-No hardware upload/test was performed during implementation. RDID, actual erase/readback, WS2812 waveform/wiring, PS/2 electrical timing, latency, power-loss recovery and heavy-load performance remained unverified at that time.
+Hardware validation had not yet been performed at this milestone’s implementation stage. RDID, actual erase/readback, WS2812 waveform/wiring, PS/2 electrical timing, latency, power-loss recovery and heavy-load performance remained unverified at that time.
 
 ### Changed files
 
