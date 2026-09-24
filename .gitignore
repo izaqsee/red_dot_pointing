@@ -1,0 +1,24 @@
+# VS Code local settings
+.vscode/settings.json
+
+# Arduino / RP2040 build artifacts
+**/build/
+*.bin
+*.elf
+*.map
+*.uf2
+
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+*.tmp
