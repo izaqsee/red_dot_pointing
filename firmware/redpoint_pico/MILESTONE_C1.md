@@ -1,6 +1,69 @@
 # Milestone C.1 — Middle-held native HID scrolling
 
-## Behavior and scope
+[日本語 (JA)](#ja) | [English (EN)](#en)
+
+## JA
+
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下はC.1実装時点の記録です。
+
+### 動作と範囲
+
+A/B/CはユーザーがWindows/iPadで確認済みです。C.1はUSB/network/frontend/command core/Flash/LEDを維持し、Pico入力/HID backendだけを変更しました。Arduino版は歴史的な動作参照です。
+logical Middleをscroll modifierとし、HID middle-button pressは送りません。PS/2 decode、logical X=raw dy/Y=raw dx、invertを適用後、Middle ownerが1つ以上ならY→Wheel、X→Horizontal Pan、Mouse X/Y=0。Middleなしのpointer動作は従来どおりでWheel/Pan=0。click passthroughは追加しません。
+各軸でmovement×middleSensitivityを蓄積し、整数部を0方向へ切り捨てて±127へclamp、小数部だけcarryします。既存pointerと同様に、飽和した整数超過は後から再送しません。感度0はscrollなし。config変更消費とmode開始/終了で全fractionをclearし、移動のない切替も扱います。
+共有action engineとlatch/releaseは不変で、どのphysical buttonもMiddleを所有できます。最後のowner解放までscroll継続し、ownerが残るhandoffではfractionを保持します。scroll中もLeft/Rightやkeyboard shortcutを使えます。
+既存128件bounded mouse queueにwheel/panを追加。busy中は保持、offline/suspendは移動履歴を破棄、overflowはneutral→current復帰。GET_REPORT/current-stateのdeltaは0です。descriptor/endpointはbyte単位で不変。既存boot protocolはbuttons/X/Yのみなのでscrollには通常report protocolが必要で、boot時の擬似scrollは追加しません。
+
+### 変更ファイル（firmware/redpoint_pico相対）
+
+- src/input_runtime.cpp: scroll mode、fraction routing/reset。
+- src/hid_state.cpp/.h: Wheel/Pan queue/API、Middle bit抑止。
+- tests/native/platform.cpp、test_platform.h: mouseの5 fieldをcapture。
+- tests/native/hardware_tests.cpp: Middle期待値更新。
+- tests/native/scroll_tests.cpp: scroll/recovery追加検証。
+- tests/native/integration.cpp、tests/run_integration.py: suite実行。
+- README.md、MILESTONE_C1.md: 動作と検証報告。
+
+### Buildと検証
+
+既にconfigureしたtargetをbuildします。
+
+```powershell
+& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
+```
+
+ELF link/UF2生成成功、warningなし。Flash 137,020 B（16,380 KiBの0.82%）、RAM 41,824 B＋SCRATCH_Y stack 4,096 B。runtime high-waterではなくlinker allocationです。
+UF2は`E:/projects/red_dot_pinting/firmware/redpoint_pico/build/redpoint_reva.uf2`、274,432 B。config sector 0x10FFF000–0x10FFFFFFはELF/UF2外、保存形式とSAVE semanticsは不変。
+
+```text
+python firmware/redpoint_pico/tests/run_integration.py
+python firmware/redpoint_pico/tests/check_milestone_c.py
+python tests/run_firmware_tests.py
+python tests/http_fsdata_test.py
+python tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
+node --test tests/configurator.test.cjs
+```
+
+Node実行時のREDPOINT_PICO_GET_RESPONSEは実lwIP統合testが生成したbuild/host-get-response.txtを指します。native統合10群（scroll、input、storage/LED、実HTTP/static、CDC/shared config）がPASS。Aの5群、Bのassets/core/freeze、CのFlash/SRAM/stackもPASS。既存firmware host、fsdata一致、HTTP compileもPASS。Nodeは55/55、skipなし。compile-onlyの未変更config_command.cppには既存float-equality warning 2件が残ります。
+
+### C.1当時の実機確認項目
+
+ユーザーがUF2を書き込んだ後、Windows/iPadで:
+
+1. USB4機能、HTTP接続、Wi-Fi併存、通常pointer移動を確認。
+2. 縦横scroll可能なページでMiddleを保持し、cursorが動かず両軸scrollし、OS autoscroll UIが出ないことを確認。
+3. 感度0/0.5/1、蓄積、正負・斜め移動、logical axesに対するinvertX/Yを確認。
+4. 各physical buttonをMiddleへmapし、2 ownerの片方release後もscroll、最後のrelease後はpointerへ戻ることを確認。
+5. held中のmapping変更、latched release、mouse/keyboard併用、SET/RESETのfraction resetとstuck防止を確認。
+6. suspend/resume、抜差し中の操作・releaseで履歴burstやstuckがないこと、SAVE/reboot persistenceも再確認。
+
+当時はC.1の物理scroll、OS/applicationのPan対応・方向、高負荷USB timingが未検証でした。agentによるpush/uploadはありません。A/B/Cの確認だけでC.1成功とはせず、後日のユーザー確認を別途記録しています。
+
+## EN
+
+> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+
+### Behavior and scope
 
 A/B/C were confirmed on Windows/iPad by the user. C.1 retains the USB,
 network, frontend, command core, Flash and LED architecture. Only the Pico
@@ -30,7 +93,7 @@ zero deltas. USB mouse/report descriptors and endpoints are byte-for-byte frozen
 The pre-existing HID boot protocol sends only buttons/X/Y; scrolling requires the
 normal report protocol. No descriptor redesign or boot-protocol emulation is added.
 
-## Changed files (relative to firmware/redpoint_pico)
+### Changed files (relative to firmware/redpoint_pico)
 
 - src/input_runtime.cpp: logical scroll mode and fractional motion routing/reset.
 - src/hid_state.cpp and src/hid_state.h: wheel/pan queue/API; suppress Middle bit.
@@ -40,7 +103,7 @@ normal report protocol. No descriptor redesign or boot-protocol emulation is add
 - tests/native/integration.cpp and tests/run_integration.py: run scroll suite.
 - README.md and MILESTONE_C1.md: current behavior and validation report.
 
-## Build and validation
+### Build and validation
 
 Build the existing configured target:
 
@@ -75,7 +138,7 @@ freeze checks and C's Flash/SRAM/stack checks pass. Existing firmware host tests
 fsdata equality and HTTP compile checks pass. Configurator Node tests pass 55/55 (zero skipped). The compile-only check retains two
 pre-existing float-equality warnings in unchanged config_command.cpp.
 
-## Hardware verification remaining for C.1
+### Hardware verification remaining for C.1
 
 After the user uploads the UF2, verify on Windows and iPad:
 

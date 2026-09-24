@@ -1,10 +1,16 @@
 # Milestone C — RevA hardware backend
 
+[日本語 (JA)](#ja) | [English (EN)](#en)
+
+## JA
+
+> 現在の確認状況（2026-09-24）: C.2までの機能とC.3のiPad表示・touch操作はユーザー実機確認済みです。以下の未検証記述・サイズ・テスト結果は各Milestone実装時点の履歴です。
+
 USB composite、descriptor、endpoint、current TinyUSB NCM、169.254.7.1/16、
 gatewayなし／DHCPなし、device-hosted Configurator、HTTP adapter、command core、
 frontendはA/Bの実機確認済み構成を維持。remote push／hardware uploadは未実施。
 
-## 移植元とbackend
+### 移植元とbackend
 
 | Arduino behavioral reference | Pico SDK側 | 維持する意味 |
 |---|---|---|
@@ -27,7 +33,7 @@ Arduinoのaction API mappingとrelease semanticsも継続検証。
 middleSensitivityはphysical middle pinではなくlogical Middle owner countに追従。
 従来どおりwheelではなくautoscroll用の低感度relative X/Yとして送信する。
 
-## Main loop／IRQ ownership
+### Main loop／IRQ ownership
 
 起動：board/GPIO → WHITE → Flash容量検査／record load／baseline → lwIP／TinyUSB →
 startup-held action latch／PS2 IRQ enable → httpd → boot完了。
@@ -46,7 +52,7 @@ FIFOへの投入だけ。HTTP、Flash、HID、config mutationはIRQで実行し�
 のみ短いIRQ maskを使う。PS/2 post-Flash resetはpending GPIO edgeもclearし、新しいgapを待つ。
 SAVEでfractional remainder自体はresetしない（Arduinoと同じ）。
 
-## HIDと意図的差分
+### HIDと意図的差分
 
 - USB descriptorとreport descriptorはbyte単位で維持。旧neutral-report taskだけを
   physical report backendへ交換したため、Aのfreeze manifestから`hid.c/h`実装hashを
@@ -63,7 +69,7 @@ SAVEでfractional remainder自体はresetしない（Arduinoと同じ）。
 - HTTPはservice内でcommandを実行するため、CDCと合わせて入力処理の前にpending flagsを
   consumeする。入力処理中／IRQから設定変更はしない。
 
-## Flash layoutと根拠
+### Flash layoutと根拠
 
 ユーザーのpicotool実測：**16384 KiB (16 MiB)**、
 flash unique ID **0x500315198093931C**、B binary end **0x1001FD04**。
@@ -104,7 +110,7 @@ v1/v2の形式互換性は維持し、v1はRAM上でdefault actionsを補い次�
 single-sector方式は元のEEPROM実装と同じく電源断atomicではない。消去／書込み中断後の
 不正recordは次回bootでdefaultに戻す。二重sector journal等の新仕様は追加していない。
 
-## WS2812
+### WS2812
 
 SDKの標準`pico_status_led/ws2812.pio`を読み込み、PIO0の空きSMをclaim。
 GPIO23にGRB、800 kHzで24 bits送る。brightnessはNeoPixelと同じ
@@ -116,7 +122,7 @@ WHITE boot、BLUE normal、GREEN activity（6秒）、YELLOW unsaved、PURPLE sa
 SAVE前にPURPLE wordをPIOへsubmitし、PIOはFlash処理中も自律送信。RED保持中はRED優先。
 PINGの2秒heartbeatはfrontendを変更せず維持する。
 
-## Build／test
+### Build／test
 
 READMEのconfigure commandへインストール済みpioasm指定を含めた。既存buildからは：
 
@@ -151,7 +157,7 @@ UF2 **273,920 B**：`build/redpoint_reva.uf2`。runtime high-water markではな
 fsdata unit test PASS、HTTP/static独立compile検査PASS。独立compile検査だけは既存の
 意図的float完全一致比較に対するwarningを出す（本targetではsource単位で除外）。
 
-## 実機確認手順／未検証事項
+### 実機確認手順／未検証事項
 
 1. 必要な既存設定をGETで控える。16 MiB末尾以外に保存したArduino設定の自動importはない。
 2. ユーザー側でUF2を書き込んだ後、USB4機能・Windows NCM Code10なし・HTTP・iPad Wi-Fi併存を再確認。
@@ -169,7 +175,7 @@ fsdata unit test PASS、HTTP/static独立compile検査PASS。独立compile検査
 このターンではhardware upload／実機動作確認はしていない。RDID応答、実erase/readback、
 WS2812波形／配線、PS/2電気的timing、入力レイテンシ、電源断復旧と高負荷時性能は未検証。
 
-## 変更ファイル
+### 変更ファイル
 
 - 共通action engine：変更`firmware/redpoint/button_action.cpp`、追加
   `button_action_backend.h`／`button_action_state.cpp`。Arduino入力・storage・LED本体は変更なし。
@@ -183,3 +189,123 @@ WS2812波形／配線、PS/2電気的timing、入力レイテンシ、電源断�
 
 変更しないもの：USB/report descriptors、endpoint、NCM、netif設定、HTTP adapter、
 static generator、frontend、`config_command.cpp`、`config_http.cpp`、record codec。
+
+## EN
+
+> Current verification status (2026-09-24): The user has verified functionality through C.2 and C.3 iPad display/touch operation on hardware. Unverified items, sizes and test results below describe the original implementation milestone.
+
+The hardware-verified A/B USB composite, descriptors, endpoints, current TinyUSB NCM, 169.254.7.1/16 without gateway/DHCP, device-hosted Configurator, HTTP adapter, command core and frontend were retained. No remote push or hardware upload was performed.
+
+### Porting references and backends
+
+| Arduino behavioral reference | Pico SDK implementation | Preserved semantics |
+| --- | --- | --- |
+| redpoint.ino GPIO/ISR/FIFO | input_runtime.cpp + platform_io.cpp | CLK12 falling edge, DATA13, odd parity, stop, 128-entry FIFO, 4 ms gap |
+| Packet parser / pointer calculations | input_runtime.cpp | Sign sanity, USB X=dy/Y=dx, pre/post ±127 clamp, inversion, fractional accumulation |
+| Button GPIO/debounce | input_runtime.cpp | L3/M2/R4 pull-ups, 5 ms, latch on press, release latched action |
+| button_action.cpp | Shared button_action_state.cpp + backends | Mouse/key/modifier owners, shared mappings, modifier-before-key press order |
+| Mouse/Keyboard APIs | hid_state.cpp + hid.c | Existing interfaces, asynchronous TinyUSB reports |
+| EEPROM/config_storage.cpp | Pico config_storage.cpp + flash_backend.cpp | Explicit SAVE, identical-record no-op, readback, resync even on failure |
+| config_record.cpp | Same source linked | v2=36 B, CRC32, v1=24 B migration, default fallback |
+| NeoPixel/status_led.cpp | Same state logic + PIO backend | GPIO23, GRB, 800 kHz, brightness 8, nonblocking latch |
+
+No Arduino compatibility shim was added. Arduino changes extracted action ownership into a shared file and Mouse/Keyboard output into thin backends. Existing host tests continue to verify Arduino action API mapping and releases. config_command.cpp, config_http.cpp and config_record.cpp were unchanged. HTTP, CDC and physical input share DeviceConfig config. The main owner consumes takeConfigChange() before applying SET/RESET to input; held actions are not rebound. At this milestone, middleSensitivity followed logical Middle owners rather than the physical middle pin and still sent low-sensitivity X/Y for OS autoscroll, not wheel reports.
+
+### Main loop / IRQ ownership
+
+Boot: board/GPIO → WHITE → Flash capacity check/record load/baseline → lwIP/TinyUSB → startup-held action latch/PS2 IRQ enable → httpd → boot complete.
+
+Only core 0 runs the loop:
+
+1. tud_task() (including incoming HTTP commands), then sys_check_timeouts().
+2. redpoint_config_cdc_task(): 32 RX bytes per loop, preserving partial TX.
+3. redpoint_config_apply(): consume takeConfigChange(), reset four pointer/scroll remainders.
+4. In the same apply call, consume takeConfigFlashWrite() and resync FIFO/frame/packet state.
+5. Button debounce/actions, then PS/2 packets: Middle state is updated first, as in Arduino.
+6. Send HID queue, update status LED.
+
+The command core does not directly alter input state. GPIO IRQ only captures bits, validates frames and enqueues FIFO data; no HTTP, Flash, HID or config mutation runs there. FIFO pop/reset briefly masks IRQs. Post-Flash PS/2 reset also clears pending GPIO edges and waits for a new gap. SAVE itself does not reset fractional remainders, matching Arduino.
+
+### HID and intentional differences
+
+- USB/report descriptors remain byte-identical. Replacing the neutral-report task with physical reports removed only hid.c/h implementation hashes from the A manifest; descriptor/USB/frontend hashes and descriptor checks remain.
+- A bounded queue preserves transitions while endpoints are busy. Each action has one HID key; three physical buttons can produce up to three distinct keys in the existing six-key report.
+- Suspend/not-ready preserves logical owners but discards motion history. Resume and mount/unmount send neutral then current state, without re-pressing keys released offline.
+- Overflow beyond 128 queued events recovers to neutral/current state. This intentional overload behavior avoids unbounded storage, USB waits and permanently stuck releases.
+- Arduino's delay(1000) is omitted. Startup-held actions wait for enumeration; PS/2 work is limited to 128 bytes per loop to service USB/network.
+- No high-frequency @DEBUG PTR/BTN logs; CDC retains its command adapter.
+- HTTP executes commands during service; HTTP/CDC flags are consumed before physical input. No config mutation occurs inside input processing or IRQ.
+
+### Flash layout and rationale
+
+User picotool measurement: **16384 KiB (16 MiB)**, Flash unique ID **0x500315198093931C**, B binary end **0x1001FD04**. The unique ID is distinct from the RDID/JEDEC capacity byte.
+
+| Region | Offset | XIP address |
+| --- | --- | --- |
+| Firmware + embedded Configurator permitted region | 0x00000000..0x00FFEFFF | 0x10000000..0x10FFEFFF |
+| C image (end exclusive) | 0x00000000..0x000216C3 | 0x10000000..0x100216C3 |
+| Dedicated 4 KiB config sector | 0x00FFF000..0x00FFFFFF | 0x10FFF000..0x10FFFFFF |
+| v2 record (36 B) | Start of sector | 0x10FFF000..0x10FFF023 |
+
+The first 256 B page contains the 36-byte record and 0xFF padding; the rest remains erased. The sector is not shared. Assets stay inside the firmware linker region. UF2 excludes the config sector; ordinary partial UF2 updates preserve it, while full erase removes settings.
+
+The SDK physical size is 16 MiB; a separate linker override limits FLASH to 16,380 KiB. ASSERT(__flash_binary_end <= 0x10fff000), sector/page alignment static assertions and ELF segment/all-UF2-block checks enforce the boundary.
+
+At boot, RDID (0x9f) is read with IRQs disabled. Storage is enabled only if capacity byte is 24 (2^24 bytes) and manufacturer is neither 0 nor FF. Otherwise defaults load and SAVE_FAILED is returned without erase/program. Capacity is never guessed.
+
+flash_safe_execute() masks core 0 IRQs. Core 1 is never started (PICO_FLASH_ASSUME_CORE1_SAFE=1; ELF checked for absence of core1 launch). The Flash callback, SDK erase/program routines and program page reside in SRAM. SDK routines manage ROM operations and XIP restoration. SAVE succeeds only after full 256 B readback equality plus 36 B record/CRC/value validation. Failed attempts also set the resync flag. Identical-record SAVE needs neither erase/program nor resync. SET/RESET/boot never write Flash.
+
+Arduino's **default 2 MiB** configuration used sector 0x101FF000, a different address. No guessed import is attempted: record GET values before migration and SET/SAVE them afterward. Records already stored at the 16 MiB end can be loaded directly. v1/v2 compatibility remains; v1 gains default actions in RAM and becomes v2 at the next explicit SAVE.
+
+Like the original EEPROM implementation, this single-sector scheme is not power-loss atomic. Interrupted writes causing invalid records fall back to defaults next boot; no dual-sector journal was introduced.
+
+### WS2812
+
+The standard SDK pico_status_led/ws2812.pio claims a free PIO0 state machine. GPIO23 sends 24 bits, GRB, 800 kHz. Brightness matches NeoPixel: channel * (8+1) >> 8, maximum 8. Updates are deferred during the 30 µs transmission plus 300 µs reset latch (330 µs total), without CPU sleeping or busy-waiting.
+
+WHITE boot, BLUE normal, GREEN activity (6 s), YELLOW unsaved, PURPLE saving (at least 150 ms), RED error (2 s). After boot: RED > PURPLE > YELLOW > GREEN > BLUE. PURPLE is submitted before Flash and PIO transmits autonomously during it; held RED takes priority. The frontend's 2-second PING heartbeat is unchanged.
+
+### Build / tests
+
+The README configure command now includes the installed pioasm path. From an existing build:
+
+```powershell
+& 'C:/Program Files/CMake/bin/cmake.exe' -S firmware/redpoint_pico -B firmware/redpoint_pico/build -Dpioasm_DIR=E:/projects/pico-sdk-tools-2.3.1-x64-win/pioasm
+& 'C:/Program Files/CMake/bin/cmake.exe' --build firmware/redpoint_pico/build --parallel 8
+& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/check_milestone_c.py
+& 'C:/Program Files/Inkscape/bin/python.exe' firmware/redpoint_pico/tests/run_integration.py
+$env:REDPOINT_PICO_GET_RESPONSE = (Resolve-Path firmware/redpoint_pico/build/host-get-response.txt).Path
+& 'C:/nvm4w/nodejs/node.exe' --test tests/configurator.test.cjs
+& 'C:/Program Files/Inkscape/bin/python.exe' tests/run_firmware_tests.py
+& 'C:/Program Files/Inkscape/bin/python.exe' tests/http_fsdata_test.py
+& 'C:/Program Files/Inkscape/bin/python.exe' tests/compile_http_lwip.py firmware/redpoint_pico/build/compile_commands.json
+```
+
+Coverage includes production PS/2 frame/FIFO/parity/stop/gap/sanity, axis/inversion/sensitivity/fractions/config reset, debounce/startup latch, disabled/mouse/key actions, shared owners/modifiers, USB busy/suspend, overflow releases, storage encoding/CRC/v1/reboot/no-op/readback failure/resync, LED state/priority/timers/latch. Real lwIP TCP/httpd tests cover five static paths, HTTP POST, HTTP/CDC effects on physical motion, SAVE success/failure and malformed rejection. Only HAL is mocked; runtime/core/storage/state sources are production code. Real Flash/GPIO/PIO drivers are ARM compiled/linked; electrical behavior needs hardware validation.
+
+Final linker allocation: Flash **136,900 B**, RAM **41,568 B**, Scratch Y stack **4,096 B** (increased from A/B's 2 KiB for HTTP and SAVE). UF2 **273,920 B**, build/redpoint_reva.uf2. These are not runtime high-water measurements.
+
+Results: final ARM build passed without warnings; Node **55/55 PASS**, none skipped; existing firmware host tests **4 groups PASS**; Pico native integration **7 groups PASS**; A descriptor/build **5 groups PASS**; B assets/core/freeze **2 groups PASS**; C Flash/XIP **2 groups PASS**; fsdata unit test and independent HTTP/static compile passed. Only independent compilation warns about intentional exact float equality; the target suppresses this per source.
+
+### Hardware acceptance / unverified at implementation time
+
+1. Record required settings using GET; Arduino settings outside the 16 MiB end sector are not imported automatically.
+2. After user upload, recheck all four USB functions, Windows NCM without Code 10, HTTP and iPad Wi-Fi coexistence.
+3. Check WHITE→BLUE, GREEN on Connected, retained by 2-second heartbeat, then BLUE 6 seconds after disconnect.
+4. Check TrackPoint axes/inversion, sensitivity 0/0.5/1/high, low-sensitivity accumulation and logical Middle low sensitivity.
+5. Check L/M/R debounce, mouse/key/disabled mappings, two owners of one action, SET while held followed by original-action release, shared modifiers and releases during suspend without stuck state after resume.
+6. Check HTTP/CDC SET affects the same physical input and RESET clears remainders.
+7. Check PURPLE on SAVE, success/clean state, reboot GET/input restoration and no write for identical SAVE. If possible in a dedicated setup, check RED and PS/2 recovery after failure.
+8. Move TrackPoint during SAVE; check no abnormal motion from partial frames after recovery.
+9. Measure concurrent assets/input/heartbeat/SAVE, real erase time, stack/heap margin, long-run operation and USB suspend current.
+
+No hardware upload/test was performed during implementation. RDID, actual erase/readback, WS2812 waveform/wiring, PS/2 electrical timing, latency, power-loss recovery and heavy-load performance remained unverified at that time.
+
+### Changed files
+
+- Shared action engine: modified firmware/redpoint/button_action.cpp; added button_action_backend.h / button_action_state.cpp. Arduino input/storage/LED bodies unchanged.
+- Pico additions: src/input_runtime.{h,cpp}, hid_state.{h,cpp}, platform_io.{h,cpp}, config_storage.cpp, flash_backend.cpp, flash_layout.h.in, status_led.cpp.
+- Pico changes: CMakeLists.txt, src/main.c, config_platform.{h,cpp}, hid.{h,c}, milestone_a_freeze.json, README.md, historical MILESTONE_B.md; added this report.
+- Tests: tests/run_firmware_tests.py; Pico tests/check_build.py, check_milestone_b.py, new check_milestone_c.py, run_integration.py, native/integration.cpp, new native/platform.cpp / hardware_tests.cpp / test_platform.h.
+
+Unchanged: USB/report descriptors, endpoints, NCM, netif settings, HTTP adapter, static generator, frontend, config_command.cpp, config_http.cpp and record codec.
