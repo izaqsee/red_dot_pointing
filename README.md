@@ -49,8 +49,6 @@ Chrome / EdgeなどWeb Serial対応ブラウザから、
 
 ## Firmwareのbuild / upload
 
-## Firmwareのbuild / upload
-
 実機確認済みの環境:
 
 - Arduino RP2040 (Philhower) core **6.1.0**
