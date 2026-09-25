@@ -11,6 +11,16 @@
   const EDIT_DEBOUNCE_MS = 120;
   const MAX_RESPONSE_LINE = 2048;
 
+  const isWheelSensitivity = key => key === "wheelSensitivityX" || key === "wheelSensitivityY";
+  // Zero is OFF; each 100 slider steps spans one decade (0.001 to 10).
+  function wheelSensitivityFromSlider(position) {
+    if (!Number.isFinite(position) || position < 0 || position > 401) return NaN;
+    return position === 0 ? 0 : Number((0.001 * 10 ** ((position - 1) / 100)).toFixed(6));
+  }
+  function wheelSliderFromSensitivity(value) {
+    return value <= 0 ? 0 : Math.max(1, Math.min(401, 1 + 100 * Math.log10(value / 0.001)));
+  }
+
   // Protocol: independent of the browser, SerialPort and DOM.
   function validConfig(config) {
     return config && typeof config === "object" &&
@@ -414,7 +424,8 @@
         const value = draft ? draft.value : confirmed?.[key];
         if (controls[key].type === "checkbox") controls[key].checked = value === true;
         else {
-          if (value !== undefined) controls[key].value = value;
+          if (value !== undefined) controls[key].value = isWheelSensitivity(key) ? wheelSliderFromSensitivity(value) : value;
+          if (isWheelSensitivity(key)) controls[key].setAttribute("aria-valuetext", value === undefined ? "—" : format(value));
           byId(`${key}-value`).textContent = value === undefined ? "—" : format(value);
         }
         byId(`${key}-confirmed`).textContent = `デバイス確認値: ${confirmed ? format(confirmed[key]) : "—"}${draft ? " · 反映待ち" : ""}`;
@@ -494,7 +505,7 @@
       const resetting = resetRequested;
       const saving = saveRequested && !resetting && !entry;
       const [key, draft] = entry || [];
-      const command = resetting ? "RESET" : saving ? "SAVE" : `SET ${key} ${typeof draft.value === "string" ? draft.value : typeof draft.value === "boolean" ? Number(draft.value) : draft.value.toFixed(2)}`;
+      const command = resetting ? "RESET" : saving ? "SAVE" : `SET ${key} ${typeof draft.value === "string" ? draft.value : typeof draft.value === "boolean" ? Number(draft.value) : draft.value.toFixed(isWheelSensitivity(key) ? 6 : 2)}`;
       message(resetting ? "default値へ戻しています…" : saving ? "Flashへ保存しています…" : "デバイスへ反映しています…");
       try {
         const config = await active.protocol.request(command);
@@ -674,7 +685,7 @@
     for (const key of KEYS) {
       controls[key].addEventListener("input", () => {
         if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey) return;
-        const value = controls[key].type === "checkbox" ? controls[key].checked : Number(controls[key].value);
+        const value = controls[key].type === "checkbox" ? controls[key].checked : (isWheelSensitivity(key) ? wheelSensitivityFromSlider(Number(controls[key].value)) : Number(controls[key].value));
         if (typeof value === "number" && (!Number.isFinite(value) || value < 0 || value > 10)) return;
         drafts.set(key, { value, ready: false });
         clearTimeout(editTimer);
@@ -735,6 +746,6 @@
 
   // Node's built-in test runner can exercise the actual code without a build tool.
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
+    module.exports = { wheelSensitivityFromSlider, wheelSliderFromSensitivity, validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
   } else mount(document, navigator.serial, window.isSecureContext);
 })();

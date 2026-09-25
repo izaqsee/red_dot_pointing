@@ -19,6 +19,12 @@ C.3のUIはPointer / Wheel / Buttonsで、Keyboard Shortcutを選んだ行のRec
 すべてのコマンドは、特記がなければrepository rootで実行します。
 [開発資料一覧](README.md) · [プロジェクト概要](../../README.md)
 
+### Wheel感度カーブ
+
+WheelのHorizontal / Verticalスライダーは低感度域を調整しやすい対数カーブです。左端はOFF (0)、次の位置は0.001×、以降100段階ごとに0.01× → 0.1× → 1× → 10×となります。表示・送信する値は実際の倍率で、小数6桁まで保持します。Pointerは従来の0〜10、0.01刻みです。
+
+既存の設定値・初期値0.40×・保存形式は変わりません。読み込んだ値は操作するまで丸めて書き換えません。Wheel出力は引き続き整数tickで、低倍率はtickの発生頻度を下げます。1 tick自体のスクロール量はOS/application側で決まります。
+
 ### Configuratorを起動する
 
 `configurator/`のVanilla HTML / CSS / JavaScriptだけで動作します。
@@ -117,6 +123,13 @@ Middle感度は物理ボタン位置ではなく、現在heldのMouse Middle Act
 旧4項目firmwareではPointer設定を使えますが、Buttonsはfirmware更新案内とともに無効になります。
 
 ## EN
+
+### Wheel sensitivity curve
+
+Horizontal / Vertical Wheel sliders use a logarithmic curve for fine low-sensitivity adjustment. The leftmost position is OFF (0), the next is 0.001×, and each 100 steps spans a decade: 0.01× → 0.1× → 1× → 10×. Displayed and transmitted values are actual multipliers, retained to six decimal places. Pointer remains linear from 0 to 10 in 0.01 steps.
+
+Existing settings, the 0.40× default and storage format are unchanged. Loaded values are not rounded and rewritten until edited. Wheel output still consists of integer ticks: lower sensitivity reduces tick frequency, while the OS/application determines the scrolling distance of each tick.
+
 
 The current Pico SDK device serves its Configurator at `http://169.254.7.1/`. [USB Ethernet](../usb-ethernet.md) is authoritative for HTTP-first/Serial fallback; [protocol](../protocol.md) defines the schema. C.3 has Pointer / Wheel / Buttons sections; choose Keyboard Shortcut in a row to reveal Record. See [C.2](../../firmware/redpoint_pico/MILESTONE_C2.md) and [C.3](../../firmware/redpoint_pico/MILESTONE_C3.md).
 

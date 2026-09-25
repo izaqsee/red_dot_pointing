@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
+const { wheelSensitivityFromSlider, wheelSliderFromSensitivity, validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount } = require("../configurator/app.js");
 
 const defaults = () => ({ pointerSensitivity: 1, wheelSensitivityX: 0.4, wheelSensitivityY: 0.4, wheelInvertX: false, wheelInvertY: false, pointerInvertX: false, pointerInvertY: false });
 const actionDefaults = () => ({ ...defaults(), leftAction: "mouse:left", middleAction: "mouse:middle", rightAction: "mouse:right" });
@@ -162,6 +162,7 @@ function fakeDocument() {
     if (!elements.has(id)) elements.set(id, {
       type: id.includes("Invert") ? "checkbox" : "range", value: "", checked: false,
       disabled: false, dataset: {}, textContent: "", events: {},
+      setAttribute(name, value) { this[name] = String(value); },
       addEventListener(type, handler) { this.events[type] = handler; },
       fire(type) { this.events[type]?.({ target: this }); }
     });
@@ -336,11 +337,11 @@ test("SAVE waits for all SET replies, confirms persistence, and reconnect GET do
   assert.equal(ui.el("save").disabled, false);
   assert.equal(ui.el("save-status").textContent, "保存状態未確認");
   port.hold = true;
-  ui.el("wheelSensitivityX").value = "0.25";
+  ui.el("wheelSensitivityX").value = String(wheelSliderFromSensitivity(0.25));
   ui.el("wheelSensitivityX").fire("input");
   ui.el("save").fire("click"); // Before debounce expires.
   await until(() => port.commands.length === 2);
-  assert.equal(port.commands[1], "SET wheelSensitivityX 0.25");
+  assert.equal(port.commands[1], "SET wheelSensitivityX 0.250000");
   assert.equal(ui.el("save-status").textContent, "Saving…");
   assert.equal(ui.el("pointer-controls").disabled, true);
   assert.equal(ui.el("save").disabled, true);
@@ -1021,11 +1022,11 @@ test("C.2 UI edits target each canonical field and RESET restores separate defau
   for (const [key,value] of Object.entries({pointerSensitivity:2,pointerInvertX:true,pointerInvertY:true,
       wheelSensitivityX:0,wheelSensitivityY:0.75,wheelInvertX:true,wheelInvertY:true})) {
     const control = ui.el(key);
-    if (typeof value === "boolean") control.checked = value; else control.value = String(value);
+    if (typeof value === "boolean") control.checked = value; else control.value = String(key.startsWith("wheelSensitivity") ? wheelSliderFromSensitivity(value) : value);
     control.fire("input");
     await until(() => port.config[key] === value);
     await until(() => !ui.el(`${key}-confirmed`).textContent.includes("反映待ち"));
-    assert.ok(port.commands.includes(`SET ${key} ${typeof value === "boolean" ? 1 : value.toFixed(2)}`));
+    assert.ok(port.commands.includes(`SET ${key} ${typeof value === "boolean" ? 1 : value.toFixed(key.startsWith("wheelSensitivity") ? 6 : 2)}`));
   }
   ui.el("reset").fire("click"); await until(() => port.commands.includes("RESET") && !ui.el("reset").disabled);
   assert.deepEqual(port.config, actionDefaults());
@@ -1082,4 +1083,39 @@ test("C.3 compact toolbar and exactly three cards preserve all controls", () => 
   assert.equal((html.match(/<section class="card/g)||[]).length,3);
   assert.ok(!html.includes('class="brand"') && !html.includes('class="intro"'));
   for(const key of ["leftAction","middleAction","rightAction"]) assert.ok(html.includes(`id="${key}-shortcut" class="shortcut-controls" hidden`));
+});
+
+
+test("Wheel logarithmic slider reserves OFF and four decades with six-digit precision", () => {
+  for (const [position, value] of [[0,0],[1,0.001],[101,0.01],[201,0.1],[301,1],[401,10]]) {
+    assert.equal(wheelSensitivityFromSlider(position), value);
+    assert.ok(Math.abs(wheelSliderFromSensitivity(value) - position) < 1e-9);
+  }
+  for (let p = 1; p <= 401; p++) {
+    assert.ok(wheelSensitivityFromSlider(p) > wheelSensitivityFromSlider(p - 1));
+  }
+  for (const value of [0.001,0.001023,0.01,0.25,0.4,0.75,10]) {
+    assert.equal(wheelSensitivityFromSlider(wheelSliderFromSensitivity(value)), value);
+  }
+  for (const p of [-1,402,NaN,Infinity]) assert.ok(Number.isNaN(wheelSensitivityFromSlider(p)));
+});
+
+test("Wheel fine sensitivity sends precise SET, displays confirmed value, and saves", async () => {
+  const ui = setupUI(true);
+  await ui.connect();
+  const port = ui.ports[0];
+  for (const [key, position] of [["wheelSensitivityX",1],["wheelSensitivityY",2]]) {
+    ui.el(key).value = String(position);
+    ui.el(key).fire("input");
+    const value = wheelSensitivityFromSlider(position);
+    await until(() => port.config[key] === value);
+    await until(() => !ui.el(`${key}-confirmed`).textContent.includes("反映待ち"));
+    assert.ok(port.commands.includes(`SET ${key} ${value.toFixed(6)}`));
+    assert.ok(ui.el(`${key}-value`).textContent.includes(String(value)));
+  }
+  ui.el("save").fire("click");
+  await until(() => port.commands.includes("SAVE") && !ui.el("save").disabled);
+  assert.equal(port.config.wheelSensitivityX, 0.001);
+  assert.equal(port.config.wheelSensitivityY, 0.001023);
+  ui.el("disconnect").fire("click");
 });

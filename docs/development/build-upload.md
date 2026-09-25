@@ -8,6 +8,17 @@ USB Ethernet版は[`firmware/redpoint_pico`](../../firmware/redpoint_pico/README
 Pico SDK版の依存関係・configure/build・UF2出力はそちらを参照してください。生成UF2を対応ボードのBOOTSELモードで書き込みます。
 設定sectorやboard/Flash条件は[Pico C報告](../../firmware/redpoint_pico/MILESTONE_C.md)を確認してください。
 
+### Pico SDK版をbuildだけする
+
+初回のconfigureが完了している環境で、repository rootから実行します。`cmake`とbuild tool（Ninja）をPATHから利用できるようにしてください。
+
+```powershell
+cmake --build firmware/redpoint_pico/build --parallel 8
+```
+
+生成UF2: `firmware/redpoint_pico/build/redpoint_reva.uf2`。このコマンドはbuildのみで、実機へのuploadは行いません。firmware sourceやConfigurator assetsの変更後も同じコマンドで再buildできます。
+初回configureの手順は[Pico SDK target](../../firmware/redpoint_pico/README.md#build-and-validation)を参照してください。
+
 以下はREADMEから移動した**Arduino版 `firmware/redpoint` 専用**の手順です。
 VS Code taskとCOM helperはArduino CLIを呼び、USB Ethernet版のbuild/uploadには使いません。
 helperのVID_2E8A検出条件をPico SDK compositeへそのまま適用しないでください。
@@ -87,6 +98,17 @@ Keyboard追加後はUSBが再列挙され、COM番号が変わる場合があり
 ## EN
 
 The USB Ethernet target is [`firmware/redpoint_pico`](../../firmware/redpoint_pico/README.md). Its README covers dependencies, configure/build commands, and UF2 output. Install the generated UF2 on the supported board in BOOTSEL mode. See the [Milestone C report](../../firmware/redpoint_pico/MILESTONE_C.md) for the config sector and board/Flash requirements.
+
+### Build the Pico SDK target without uploading
+
+After the initial configure step, run this from the repository root with `cmake` and the build tool (Ninja) available on PATH:
+
+```powershell
+cmake --build firmware/redpoint_pico/build --parallel 8
+```
+
+Output: `firmware/redpoint_pico/build/redpoint_reva.uf2`. This command builds only; it does not upload to hardware. Use the same command after changing firmware sources or Configurator assets.
+For initial configuration, see the [Pico SDK target](../../firmware/redpoint_pico/README.md#build-and-validation).
 
 The following instructions, moved from the README, apply **only to the Arduino target `firmware/redpoint`**. The VS Code task and COM helper invoke Arduino CLI; they do not build/upload the USB Ethernet target. Do not apply the helper's VID_2E8A detection assumptions to the Pico SDK composite device.
 

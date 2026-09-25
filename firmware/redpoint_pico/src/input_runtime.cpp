@@ -56,7 +56,11 @@ void move(uint8_t xb, uint8_t yb) {
     if (config.wheelInvertX) x = -x;
     if (!config.wheelInvertY) y = -y;
     pointerAccX = pointerAccY = 0;
-    scrollAccX += x * config.wheelSensitivityX; scrollAccY += y * config.wheelSensitivityY;
+
+    constexpr float WHEEL_SCALE = 0.1f;
+    scrollAccX += x * config.wheelSensitivityX * WHEEL_SCALE;
+    scrollAccY += y * config.wheelSensitivityY * WHEEL_SCALE;
+      
     outX = (int16_t)scrollAccX; outY = (int16_t)scrollAccY;
     // Match pointer saturation: retain fractions, discard excess whole ticks.
     scrollAccX -= outX; scrollAccY -= outY;
