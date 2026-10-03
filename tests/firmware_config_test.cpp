@@ -23,7 +23,7 @@ bool equalAction(const ButtonAction &a, const ButtonAction &b) {
   return a.type == b.type && a.code == b.code && a.modifiers == b.modifiers;
 }
 bool equal(const DeviceConfig &a, const DeviceConfig &b) {
-  return a.pointerSensitivity == b.pointerSensitivity && a.wheelSensitivityX == b.wheelSensitivityX && a.wheelSensitivityY == b.wheelSensitivityY &&
+  return equalDeviceConfig(a,b) && a.pointerSensitivity == b.pointerSensitivity && a.wheelSensitivityX == b.wheelSensitivityX && a.wheelSensitivityY == b.wheelSensitivityY &&
     a.wheelInvertX == b.wheelInvertX && a.wheelInvertY == b.wheelInvertY &&
     a.pointerInvertX == b.pointerInvertX && a.pointerInvertY == b.pointerInvertY &&
     equalAction(a.leftAction,b.leftAction) && equalAction(a.middleAction,b.middleAction) && equalAction(a.rightAction,b.rightAction);
@@ -57,11 +57,11 @@ bool command(Stream &serial, const std::string &text) {
 
 int main() {
   runActionTests();
-  const DeviceConfig custom = {1.25f, 0.35f, 0.35f, false, false, true, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION};
+  const DeviceConfig custom = {1.25f, 0.35f, 0.35f, false, false, true, false, LEFT_ACTION, MIDDLE_ACTION, RIGHT_ACTION, 1, 1, 1, 1, 1, 1};
   uint8_t record[CONFIG_RECORD_SIZE];
   assert(encodeConfigRecord(custom, record));
   assert(memcmp(record, "RPNT", 4) == 0);
-  assert(record[4] == 3 && record[5] == 0 && record[6] == 44 && record[7] == 0);
+  assert(record[4] == 4 && record[5] == 0 && record[6] == 68 && record[7] == 0);
   // IEEE-754 1.25 = 0x3fa00000, explicitly little endian.
   assert(record[8] == 0 && record[9] == 0 && record[10] == 0xa0 && record[11] == 0x3f);
   DeviceConfig decoded;
@@ -99,7 +99,7 @@ int main() {
   }
   for (float bad : {-0.1f, 10.1f, std::numeric_limits<float>::infinity(),
                     std::numeric_limits<float>::quiet_NaN()}) {
-    for (int offset : {8, 12, 32}) {
+    for (int offset : {8, 12, 32, 40, 44, 48, 52, 56, 60}) {
       memcpy(damaged, record, sizeof(record));
       uint32_t bits;
       memcpy(&bits, &bad, 4);
@@ -195,7 +195,7 @@ int main() {
   assert(loadDeviceConfig(config) && equal(config,migratedV2));
   assert(EEPROM.commits == commitsV2 && EEPROM.flash[4] == 2);
   command(serial,"SAVE\n");
-  assert(EEPROM.flash[4] == 3 && EEPROM.commits == commitsV2+1);
+  assert(EEPROM.flash[4] == 4 && EEPROM.commits == commitsV2+1);
   assert(loadDeviceConfig(config) && equal(config,migratedV2));
   command(serial,"SET middleSensitivity 0.75\n");
   assert(config.wheelSensitivityX == 0.75f && config.wheelSensitivityY == 0.75f);
@@ -206,6 +206,70 @@ int main() {
   command(serial,"GET\n");
   assert(serial.output.find("\"middleSensitivity\":0.750000") != std::string::npos);
   assert(serial.output.size() < sizeof(ConfigResponse{}.text));
+  // Independent v3 bytes; migration is RAM-only until SAVE.
+  const uint8_t legacyV3[] = {82,80,78,84,3,0,44,0,0,0,160,63,51,51,179,62,1,0,0,0,1,1,0,0,1,2,0,0,1,3,0,0,0,0,64,63,1,0,0,0,141,110,159,161};
+  assert(decodeConfigRecord(legacyV3, decoded, sizeof(legacyV3)));
+  assert(decoded.directionalGainLeft == 1.0f);
+  assert(decoded.directionalGainRight == 1.0f);
+  assert(decoded.directionalGainUp == 1.0f);
+  assert(decoded.directionalGainDown == 1.0f);
+  assert(decoded.wheelLowGain == 1.0f);
+  assert(decoded.wheelHighGain == 1.0f);
+  assert(decoded.wheelSensitivityY == .75f && decoded.wheelInvertX);
+  EEPROM.flash.fill(0xff); memcpy(EEPROM.flash.data(), legacyV3, sizeof(legacyV3));
+  const int beforeV3 = EEPROM.commits;
+  assert(loadDeviceConfig(config)); assert(EEPROM.commits == beforeV3);
+  configSetPersistentBaseline(config); assert(!configUnsaved());
+  command(serial,"SAVE\n"); assert(EEPROM.flash[4] == 4 && EEPROM.commits == beforeV3+1);
+  command(serial,"SET directionalGainLeft 2.5\n"); assert(config.directionalGainLeft == 2.5f && configUnsaved());
+  command(serial,"GET\n"); assert(serial.output.find("\"directionalGainLeft\":2.500000") != std::string::npos);
+  command(serial,"SAVE\n"); assert(!configUnsaved());
+  assert(loadDeviceConfig(config) && config.directionalGainLeft == 2.5f);
+  for (const auto bad : {"nan", "inf", "-1", "10.1"}) {
+    command(serial, std::string("SET directionalGainLeft ")+bad+"\n");
+    assert(config.directionalGainLeft == 2.5f && serial.output.find("INVALID_VALUE") != std::string::npos);
+  }
+  command(serial,"SET directionalGainRight 2.5\n"); assert(config.directionalGainRight == 2.5f && configUnsaved());
+  command(serial,"GET\n"); assert(serial.output.find("\"directionalGainRight\":2.500000") != std::string::npos);
+  command(serial,"SAVE\n"); assert(!configUnsaved());
+  assert(loadDeviceConfig(config) && config.directionalGainRight == 2.5f);
+  for (const auto bad : {"nan", "inf", "-1", "10.1"}) {
+    command(serial, std::string("SET directionalGainRight ")+bad+"\n");
+    assert(config.directionalGainRight == 2.5f && serial.output.find("INVALID_VALUE") != std::string::npos);
+  }
+  command(serial,"SET directionalGainUp 2.5\n"); assert(config.directionalGainUp == 2.5f && configUnsaved());
+  command(serial,"GET\n"); assert(serial.output.find("\"directionalGainUp\":2.500000") != std::string::npos);
+  command(serial,"SAVE\n"); assert(!configUnsaved());
+  assert(loadDeviceConfig(config) && config.directionalGainUp == 2.5f);
+  for (const auto bad : {"nan", "inf", "-1", "10.1"}) {
+    command(serial, std::string("SET directionalGainUp ")+bad+"\n");
+    assert(config.directionalGainUp == 2.5f && serial.output.find("INVALID_VALUE") != std::string::npos);
+  }
+  command(serial,"SET directionalGainDown 2.5\n"); assert(config.directionalGainDown == 2.5f && configUnsaved());
+  command(serial,"GET\n"); assert(serial.output.find("\"directionalGainDown\":2.500000") != std::string::npos);
+  command(serial,"SAVE\n"); assert(!configUnsaved());
+  assert(loadDeviceConfig(config) && config.directionalGainDown == 2.5f);
+  for (const auto bad : {"nan", "inf", "-1", "10.1"}) {
+    command(serial, std::string("SET directionalGainDown ")+bad+"\n");
+    assert(config.directionalGainDown == 2.5f && serial.output.find("INVALID_VALUE") != std::string::npos);
+  }
+  command(serial,"SET wheelLowGain 2.5\n"); assert(config.wheelLowGain == 2.5f && configUnsaved());
+  command(serial,"GET\n"); assert(serial.output.find("\"wheelLowGain\":2.500000") != std::string::npos);
+  command(serial,"SAVE\n"); assert(!configUnsaved());
+  assert(loadDeviceConfig(config) && config.wheelLowGain == 2.5f);
+  for (const auto bad : {"nan", "inf", "-1", "10.1"}) {
+    command(serial, std::string("SET wheelLowGain ")+bad+"\n");
+    assert(config.wheelLowGain == 2.5f && serial.output.find("INVALID_VALUE") != std::string::npos);
+  }
+  command(serial,"SET wheelHighGain 2.5\n"); assert(config.wheelHighGain == 2.5f && configUnsaved());
+  command(serial,"GET\n"); assert(serial.output.find("\"wheelHighGain\":2.500000") != std::string::npos);
+  command(serial,"SAVE\n"); assert(!configUnsaved());
+  assert(loadDeviceConfig(config) && config.wheelHighGain == 2.5f);
+  for (const auto bad : {"nan", "inf", "-1", "10.1"}) {
+    command(serial, std::string("SET wheelHighGain ")+bad+"\n");
+    assert(config.wheelHighGain == 2.5f && serial.output.find("INVALID_VALUE") != std::string::npos);
+  }
+  command(serial,"RESET\n"); assert(equalDeviceConfig(config, DEFAULT_CONFIG));
   // Golden v1 fixture created independently with Python struct + zlib.
   const uint8_t legacy[24] = {0x52, 0x50, 0x4e, 0x54, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00, 0xa0, 0x3f, 0x33, 0x33, 0xb3, 0x3e, 0x01, 0x00, 0x00, 0x00, 0xae, 0xd5, 0xb9, 0xdf};
   assert(decodeConfigRecord(legacy, decoded, sizeof(legacy)) && equal(decoded, custom));
@@ -231,7 +295,7 @@ int main() {
   command(serial, "GET\n");
   assert(serial.output.find("\"leftAction\":\"mouse:left\"") != std::string::npos);
   command(serial, "SAVE\n");
-  assert(EEPROM.flash[4] == 3 && EEPROM.flash[6] == 44 && EEPROM.commits == beforeMigration + 1);
+  assert(EEPROM.flash[4] == 4 && EEPROM.flash[6] == 68 && EEPROM.commits == beforeMigration + 1);
   command(serial, "SAVE\n"); assert(EEPROM.commits == beforeMigration + 1);
   assert(command(serial, "SET rightAction key:03:17\n"));
   assert(config.rightAction.type == ActionType::KeyboardShortcut && config.rightAction.code == 0x17);

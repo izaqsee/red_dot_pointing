@@ -480,3 +480,11 @@ No arguments; extras return INVALID_ARGUMENTS. PING is serialized like other req
 After GET synchronization, probe PING at the first idle opportunity. Success enables a 2000 ms heartbeat; UNKNOWN_COMMAND stops only that session's timer without fatal UI error, retaining schema-compatible configuration. Reconnect discards capability and probes again. Timeout follows existing GET resync; write failure disconnects.
 Skip PING during drafts (including debounce), SET/RESET/SAVE, GET sync, or shortcut recording. Never accumulate heartbeat requests. A sent PING still awaits its reply before prioritizing waiting user work. Disconnect/stream end/unplug stops the timer. A success reply with a different command cannot complete the current request.
 LED meaning/priority is unchanged in C.2. Every config error holds RED for two seconds, extended by later errors. Submit PURPLE immediately before SAVE and retain only the LED display for at least 150 ms from start. RED overrides PURPLE; never delay Flash/protocol/HID for display duration. Arduino NeoPixel latch wait yields Serial polling instead of blocking.
+
+## Pico transfer-function fields (v4 storage)
+
+`directionalGainLeft`, `directionalGainRight`, `directionalGainUp`, `directionalGainDown`,
+`wheelLowGain`, `wheelHighGain` are finite floats in [0,10], default 1.0.
+They are included in GET/SET/RESET/SAVE and unsaved-state comparison.
+Legacy v1/v2/v3 records initialize these fields to 1.0 and are written as v4 only on SAVE.
+See [transfer function](development/transfer-function.md) for axis conventions, response and migration.

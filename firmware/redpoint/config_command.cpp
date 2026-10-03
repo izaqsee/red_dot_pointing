@@ -55,6 +55,18 @@ void reply(ResponseWriter &serial, const char *command) {
   serial.print(config.wheelSensitivityX, JSON_DECIMALS);
   serial.print(",\"wheelSensitivityY\":");
   serial.print(config.wheelSensitivityY, JSON_DECIMALS);
+  serial.print(",\"directionalGainLeft\":");
+  serial.print(config.directionalGainLeft, JSON_DECIMALS);
+  serial.print(",\"directionalGainRight\":");
+  serial.print(config.directionalGainRight, JSON_DECIMALS);
+  serial.print(",\"directionalGainUp\":");
+  serial.print(config.directionalGainUp, JSON_DECIMALS);
+  serial.print(",\"directionalGainDown\":");
+  serial.print(config.directionalGainDown, JSON_DECIMALS);
+  serial.print(",\"wheelLowGain\":");
+  serial.print(config.wheelLowGain, JSON_DECIMALS);
+  serial.print(",\"wheelHighGain\":");
+  serial.print(config.wheelHighGain, JSON_DECIMALS);
   serial.print(",\"pointerInvertX\":");
   serial.print(config.pointerInvertX ? "true" : "false");
   serial.print(",\"pointerInvertY\":");
@@ -121,6 +133,30 @@ bool executeLine(char *line, ResponseWriter &serial) {
       else if (strcmp(key, "wheelSensitivityX") == 0) config.wheelSensitivityX = parsed;
       else if (strcmp(key, "wheelSensitivityY") == 0) config.wheelSensitivityY = parsed;
       else config.wheelSensitivityX = config.wheelSensitivityY = parsed;
+    } else if (strcmp(key, "directionalGainLeft") == 0) {
+      float parsed;
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
+      config.directionalGainLeft = parsed;
+    } else if (strcmp(key, "directionalGainRight") == 0) {
+      float parsed;
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
+      config.directionalGainRight = parsed;
+    } else if (strcmp(key, "directionalGainUp") == 0) {
+      float parsed;
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
+      config.directionalGainUp = parsed;
+    } else if (strcmp(key, "directionalGainDown") == 0) {
+      float parsed;
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
+      config.directionalGainDown = parsed;
+    } else if (strcmp(key, "wheelLowGain") == 0) {
+      float parsed;
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
+      config.wheelLowGain = parsed;
+    } else if (strcmp(key, "wheelHighGain") == 0) {
+      float parsed;
+      if (!parseSensitivity(value, parsed)) { error(serial, "INVALID_VALUE"); return false; }
+      config.wheelHighGain = parsed;
     } else if (strcmp(key, "pointerInvertX") == 0 || strcmp(key, "pointerInvertY") == 0 ||
                strcmp(key, "wheelInvertX") == 0 || strcmp(key, "wheelInvertY") == 0 ||
                strcmp(key, "invertX") == 0 || strcmp(key, "invertY") == 0) {
@@ -218,7 +254,13 @@ bool equalDeviceConfig(const DeviceConfig &a, const DeviceConfig &b) {
     a.wheelSensitivityY == b.wheelSensitivityY && a.wheelInvertX == b.wheelInvertX && a.wheelInvertY == b.wheelInvertY &&
     a.pointerInvertX == b.pointerInvertX && a.pointerInvertY == b.pointerInvertY &&
     equalAction(a.leftAction, b.leftAction) && equalAction(a.middleAction, b.middleAction) &&
-    equalAction(a.rightAction, b.rightAction);
+    equalAction(a.rightAction, b.rightAction) &&
+    a.directionalGainLeft == b.directionalGainLeft &&
+    a.directionalGainRight == b.directionalGainRight &&
+    a.directionalGainUp == b.directionalGainUp &&
+    a.directionalGainDown == b.directionalGainDown &&
+    a.wheelLowGain == b.wheelLowGain &&
+    a.wheelHighGain == b.wheelHighGain;
 }
 void configSetPersistentBaseline(const DeviceConfig &value) {
   persistentBaseline = value;

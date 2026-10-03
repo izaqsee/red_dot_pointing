@@ -4,8 +4,25 @@
 
 ## JA
 
-独立したRP2040 targetです。current TinyUSBのCDC-NCM、CDC ACM Serial、2つのHID interfaceを構成します。A/B/Cは実機確認済みで、USB/network/HTTP/frontend architectureをfreezeしています。CではGPIO12/13のTrackPoint PS/2、GPIO3/2/4の物理ボタン、TinyUSB入力report、設定保存、GPIO23のWS2812を追加しました。
+独立したRP2040 targetです。current TinyUSBのCDC-NCM、CDC ACM Serial、2つのHID interfaceを構成します。A/B/Cは実機確認済みで、USB/network/HTTP/frontend architectureをfreezeしています。C時点ではGPIO12/13のTrackPoint PS/2、GPIO3/2/4の物理ボタン、TinyUSB入力report、設定保存、GPIO23のWS2812を追加しました。
 [C.2](MILESTONE_C2.md)にPointer/Wheel独立設定、v3移行、検証結果を記録しています。C.1のnative scrollingはWindows/iPadで実機確認済みです。[C](MILESTONE_C.md)は当時の配置・意図的差分・テスト・実機検証・変更一覧、[B](MILESTONE_B.md)はB時点の履歴です。
+
+### 現行評価機の配線（2026-10-03）
+
+pin assignmentの正は[`src/input_runtime.h`](src/input_runtime.h)です。`platform_io.cpp`はこの定義からGPIOとIRQを設定します。
+
+| 機能 | GPIO | 論理button index |
+| --- | --- | --- |
+| PS/2 CLK | 20 | — |
+| PS/2 DATA | 21 | — |
+| Left | 4 | 0 |
+| Middle | 5 | 1 |
+| Right | 3 | 2 |
+| WS2812 | 23 | — |
+
+今回の評価機で使用するpointing-stick moduleは、3.3 V電源でPS/2通信とpointer動作を実機確認済みです。この事実は当該評価機のmoduleに限り、TrackPoint系module一般の3.3 V対応を保証するものではありません。firmwareに5 Vやlevel shifterを前提とする処理は追加していません。
+旧CLK12/DATA13、Left3/Middle2/Right4は過去のMilestone時点の配線です。論理button indexは引き続き0=Left、1=Middle、2=Rightで、GPIO番号順には並べ替えません。GPIO5のMiddle actionは既存仕様どおりhold中のscroll modifierです。
+この配線を反映したbuildの実機確認項目はpointer、各物理button、Middle-held Wheel/Pan、HTTP Configurator、GET/SET/SAVE/RESET、response curveの即時反映とreboot後の復元です。
 
 ### 依存関係とarchitecture
 
@@ -104,11 +121,28 @@ Cの物理入力・Flash保存・WS2812、C.1のnative scrollingは実機確認�
 
 Independent RP2040 target: current TinyUSB CDC-NCM + CDC ACM Serial + two HID
 interfaces. Milestones A/B/C are hardware-verified and their USB/network/HTTP/frontend
-architecture is frozen. Milestone C adds GPIO12/13 TrackPoint PS/2, GPIO3/2/4
+architecture is frozen. At Milestone C, the target added GPIO12/13 TrackPoint PS/2, GPIO3/2/4
 physical buttons, TinyUSB input reports, persistent config and GPIO23 WS2812.
 See [MILESTONE_C2.md](MILESTONE_C2.md) for separate Pointer/Wheel settings, v3 migration and current validation. C.1 native scrolling is hardware-verified on Windows/iPad. See [MILESTONE_C.md](MILESTONE_C.md) for the historical C layout, intentional differences, tests,
 hardware validation and the complete change list. [MILESTONE_B.md](MILESTONE_B.md)
 is the historical B report.
+
+### Current evaluation-unit wiring (2026-10-03)
+
+[`src/input_runtime.h`](src/input_runtime.h) is the authoritative pin assignment. `platform_io.cpp` uses these definitions for GPIO and IRQ setup.
+
+| Function | GPIO | Logical button index |
+| --- | --- | --- |
+| PS/2 CLK | 20 | — |
+| PS/2 DATA | 21 | — |
+| Left | 4 | 0 |
+| Middle | 5 | 1 |
+| Right | 3 | 2 |
+| WS2812 | 23 | — |
+
+The pointing-stick module in this evaluation unit has been hardware-verified for PS/2 communication and pointer operation with a 3.3 V supply. This applies to the tested module/unit and does not imply that all TrackPoint-style modules support 3.3 V. No firmware processing assumes a 5 V supply or level shifter.
+CLK12/DATA13 and Left3/Middle2/Right4 describe historical Milestone wiring. Logical indices remain 0=Left, 1=Middle, 2=Right regardless of GPIO number order. The Middle action on GPIO5 remains a held scroll modifier.
+Hardware acceptance for the build with this wiring covers pointer motion, each physical button, Middle-held Wheel/Pan, HTTP Configurator, GET/SET/SAVE/RESET, immediate response-curve changes and settings restored after reboot.
 
 ### Dependencies and architecture
 

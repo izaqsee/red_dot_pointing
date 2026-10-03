@@ -10,6 +10,10 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+static_assert(REDPOINT_CLK == 20 && REDPOINT_DATA == 21, "Evaluation PS/2 GPIOs");
+static_assert(REDPOINT_LEFT == 4 && REDPOINT_MIDDLE == 5 && REDPOINT_RIGHT == 3,
+              "Evaluation button GPIOs: index 0=Left, 1=Middle, 2=Right");
+static_assert(REDPOINT_LED == 23, "WS2812 GPIO remains unchanged");
 static void command(const char *text) {
   ConfigResponse r; executeConfigCommand(text, strlen(text), r); redpoint_config_apply();
 }
@@ -71,7 +75,7 @@ void runHardwareTests(void) {
   command("SET leftAction mouse:middle"); command("SET rightAction mouse:middle");
   button(0,true); button(2,true); button(0,false);
   assert(mouseActionHeld(MouseButtonCode::Middle));
-  command("SET middleSensitivity 0.5"); command("SET pointerSensitivity 2");
+  command("SET middleSensitivity 5"); command("SET pointerSensitivity 2");
   testPacket(2,2); assert((mouseReports.back() == std::array<int,5>{0,0,0,-1,1})); // logical Middle scroll
   testPacket(1,1); assert(mouseReports.back()[4] == 0);
   command("SET middleSensitivity 0.5"); testPacket(1,1); assert(mouseReports.back()[4] == 0);
@@ -127,7 +131,7 @@ void runHardwareTests(void) {
   assert(restored.pointerInvertX && !restored.wheelInvertX && !restored.wheelInvertY);
   assert(restored.wheelSensitivityX == 0.25f && restored.wheelSensitivityY == 0.25f);
   assert(restored.leftAction.code == 0x17 && writes == beforeV2Writes && flashImage[4] == 2);
-  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 3);
+  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 4);
   assert(takeConfigFlashWrite());
   DeviceConfig reboot; assert(loadDeviceConfig(reboot) && equalDeviceConfig(restored, reboot));
   // v1 fixture: same codec/CRC, no boot write; next explicit SAVE upgrades to v3.
@@ -135,7 +139,7 @@ void runHardwareTests(void) {
   repairCRC(flashImage, 24); unsigned beforeWrites = writes;
   assert(loadDeviceConfig(restored)); assert(restored.pointerSensitivity == saved.pointerSensitivity);
   assert(restored.leftAction.code == LEFT_ACTION.code && writes == beforeWrites);
-  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 3);
+  assert(saveDeviceConfig(restored) == ConfigSaveResult::Saved && flashImage[4] == 4);
   assert(takeConfigFlashWrite());
   restored.pointerSensitivity = std::numeric_limits<float>::quiet_NaN();
   assert(saveDeviceConfig(restored) == ConfigSaveResult::InvalidConfig);

@@ -3,6 +3,7 @@
 #include "platform_io.h"
 #include "hid_state.h"
 #include "config.h"
+#include "input_response.h"
 
 namespace {
 constexpr uint32_t PACKET_GAP_MS = 4, DEBOUNCE_MS = 5;
@@ -49,7 +50,9 @@ void updateButtons() {
 }
 int16_t clamp(int16_t v) { return v > 127 ? 127 : v < -127 ? -127 : v; }
 void move(uint8_t xb, uint8_t yb) {
-  int16_t x = clamp((int8_t)yb), y = clamp((int8_t)xb);
+  const auto corrected = applyDirectionalCalibration(clamp((int8_t)yb), clamp((int8_t)xb), config);
+  float x = corrected.x, y = corrected.y;
+  // Maximum configured product is 127 * 10 * 10 * 10 * 0.1 = 12700.
   int16_t outX, outY;
   if (scrollMode) {
     // Pan polarity was hardware-confirmed; Wheel needs the opposite base sign.
@@ -57,9 +60,9 @@ void move(uint8_t xb, uint8_t yb) {
     if (!config.wheelInvertY) y = -y;
     pointerAccX = pointerAccY = 0;
 
-    constexpr float WHEEL_SCALE = 0.1f;
-    scrollAccX += x * config.wheelSensitivityX * WHEEL_SCALE;
-    scrollAccY += y * config.wheelSensitivityY * WHEEL_SCALE;
+    const float response = wheelResponseGain(corrected.x, corrected.y, config.wheelLowGain, config.wheelHighGain);
+    scrollAccX += x * response * config.wheelSensitivityX * WHEEL_BASE_SCALE;
+    scrollAccY += y * response * config.wheelSensitivityY * WHEEL_BASE_SCALE;
       
     outX = (int16_t)scrollAccX; outY = (int16_t)scrollAccY;
     // Match pointer saturation: retain fractions, discard excess whole ticks.

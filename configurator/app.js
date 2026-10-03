@@ -1,7 +1,8 @@
 "use strict";
 
 (() => {
-  const KEYS = ["pointerSensitivity", "pointerInvertX", "pointerInvertY", "wheelSensitivityX", "wheelSensitivityY", "wheelInvertX", "wheelInvertY"];
+  const GAIN_KEYS = ["directionalGainLeft", "directionalGainRight", "directionalGainUp", "directionalGainDown", "wheelLowGain", "wheelHighGain"];
+  const KEYS = [...GAIN_KEYS, "pointerSensitivity", "pointerInvertX", "pointerInvertY", "wheelSensitivityX", "wheelSensitivityY", "wheelInvertX", "wheelInvertY"];
   const ACTION_KEYS = ["leftAction", "middleAction", "rightAction"];
   const ALL_KEYS = [...KEYS, ...ACTION_KEYS];
   const { validAction, actionLabel, createShortcutRecorder } =
@@ -21,12 +22,38 @@
     return value <= 0 ? 0 : Math.max(1, Math.min(401, 1 + 100 * Math.log10(value / 0.001)));
   }
 
+  // Same smoothstep as firmware/redpoint/input_response.h, with already-normalized input.
+  function wheelResponseGain(input, low, high) {
+    const t = Math.max(0, Math.min(1, input));
+    return low + (high - low) * t * t * (3 - 2 * t);
+  }
+
+  function wheelCurvePreview(low, high) {
+    const maximum = Math.max(1, low, high);
+    const point = input => {
+      const gain = wheelResponseGain(input, low, high);
+      return { gain, x: 40 + input * 240, y: 94 - gain / maximum * 64 };
+    };
+    const samples = [0, .25, .5, .75, 1].map(point);
+    const path = Array.from({ length: 65 }, (_, i) => {
+      const { x, y } = point(i / 64);
+      return `${i ? "L" : "M"}${x.toFixed(3)},${y.toFixed(3)}`;
+    }).join(" ");
+    return { maximum, samples, path };
+  }
+
+  function wheelCurvePath(low, high) {
+    return wheelCurvePreview(low, high).path;
+  }
+
   // Protocol: independent of the browser, SerialPort and DOM.
   function validConfig(config) {
     return config && typeof config === "object" &&
       ["pointerSensitivity", "wheelSensitivityX", "wheelSensitivityY"].every(key =>
         typeof config[key] === "number" && Number.isFinite(config[key]) &&
         config[key] >= 0 && config[key] <= 10) &&
+      (GAIN_KEYS.every(key => !Object.hasOwn(config, key)) || GAIN_KEYS.every(key =>
+        typeof config[key] === "number" && Number.isFinite(config[key]) && config[key] >= 0 && config[key] <= 10)) &&
       ["pointerInvertX", "pointerInvertY", "wheelInvertX", "wheelInvertY"].every(key => typeof config[key] === "boolean") &&
       (ACTION_KEYS.every(key => !Object.hasOwn(config, key)) || ACTION_KEYS.every(key => validAction(config[key])));
   }
@@ -394,6 +421,7 @@
         (text.startsWith("設定を取得しました。") || text.startsWith("デバイスの応答を確認しました。"));
     }
     function format(value) {
+      if (value === undefined) return "—";
       return typeof value === "boolean" ? (value ? "On" : "Off") :
         `${Number(value.toFixed(6)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 })}×`;
     }
@@ -421,6 +449,7 @@
       byId("connection-status").dataset.state = connectionState;
       for (const key of KEYS) {
         const draft = drafts.get(key);
+        if (GAIN_KEYS.includes(key)) controls[key].disabled = !ready || !Object.hasOwn(confirmed, key);
         const value = draft ? draft.value : confirmed?.[key];
         if (controls[key].type === "checkbox") controls[key].checked = value === true;
         else {
@@ -430,6 +459,28 @@
         }
         byId(`${key}-confirmed`).textContent = `デバイス確認値: ${confirmed ? format(confirmed[key]) : "—"}${draft ? " · 反映待ち" : ""}`;
       }
+      const low = drafts.get("wheelLowGain")?.value ?? confirmed?.wheelLowGain;
+      const high = drafts.get("wheelHighGain")?.value ?? confirmed?.wheelHighGain;
+      const hasResponse = Number.isFinite(low) && Number.isFinite(high);
+      byId("wheel-response-graph").hidden = !hasResponse;
+      byId("wheel-response-unavailable").hidden = hasResponse;
+      byId("wheel-response-unavailable").textContent = confirmed ? "Response preview requires supported firmware" : "Connect to load response";
+      if (hasResponse) {
+        const preview = wheelCurvePreview(low, high);
+        byId("wheel-response-path").setAttribute("d", preview.path);
+        byId("wheel-response-maximum").textContent = format(preview.maximum);
+        for (const [i, point] of preview.samples.entries()) byId(`wheel-response-sample-${i}`).textContent = format(point.gain);
+        for (const [name, point] of [["slow", preview.samples[0]], ["fast", preview.samples[4]]]) {
+          byId(`wheel-response-${name}`).setAttribute("cx", point.x);
+          byId(`wheel-response-${name}`).setAttribute("cy", point.y);
+          byId(`wheel-response-${name}-label`).setAttribute("y", point.y - 9);
+          byId(`wheel-response-${name}-label`).textContent = `${name === "slow" ? "Slow" : "Fast"} ${format(point.gain)}`;
+        }
+        const pending = drafts.has("wheelLowGain") || drafts.has("wheelHighGain");
+        byId("wheel-response-state").textContent = pending ? "Preview · pending SET" : "Device values";
+        byId("wheel-response-preview").setAttribute("aria-label", `Wheel gain: slow ${low}, fast ${high}; normalized input 0–1, gain 0–${preview.maximum}. ${pending ? "Pending SET" : "Device values"}`);
+      }
+      byId("calibration-support").textContent = ready && !Object.hasOwn(confirmed, "wheelLowGain") ? "Firmware update required for calibration / response" : "Physical correction · shared by Pointer and Wheel · before Invert";
       for (const key of ACTION_KEYS) {
         const draft = drafts.get(key);
         const value = draft ? draft.value : confirmed?.[key];
@@ -684,7 +735,7 @@
     }
     for (const key of KEYS) {
       controls[key].addEventListener("input", () => {
-        if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey) return;
+        if (connectionState !== "connected" || resetRequested || saveRequested || recordingKey || (GAIN_KEYS.includes(key) && !Object.hasOwn(confirmed, key))) return;
         const value = controls[key].type === "checkbox" ? controls[key].checked : (isWheelSensitivity(key) ? wheelSensitivityFromSlider(Number(controls[key].value)) : Number(controls[key].value));
         if (typeof value === "number" && (!Number.isFinite(value) || value < 0 || value > 10)) return;
         drafts.set(key, { value, ready: false });
@@ -746,6 +797,6 @@
 
   // Node's built-in test runner can exercise the actual code without a build tool.
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { wheelSensitivityFromSlider, wheelSliderFromSensitivity, validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
+    module.exports = { wheelResponseGain, wheelCurvePreview, wheelCurvePath, wheelSensitivityFromSlider, wheelSliderFromSensitivity, validConfig, parseLine, createLineReader, createProtocol, createSerialTransport, createHeartbeat, createHttpTransport, createHttpConnection, authorizedCandidates, createDeviceConnection, probeAuthorizedPorts, mount };
   } else mount(document, navigator.serial, window.isSecureContext);
 })();

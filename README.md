@@ -29,7 +29,9 @@ USB Ethernet経由のConfigurator、設定保存・再起動後の復元まで�
 ### Hardware
 
 TrackPoint系PS/2モジュール、RP2040搭載ボード（VCC-GND YD RP2040等）、
-3つの物理ボタン、レベル変換回路で構成します。上の写真はRev.B試作機です。
+3つの物理ボタンで構成します。上の写真はレベル変換回路を含むRev.B試作機です。
+現行評価機のmoduleは3.3 V電源でPS/2通信・pointer動作を実機確認済みです。この確認は当該評価機に限ります。
+現行配線はCLK20 / DATA21、Left4 / Middle5 / Right3です。
 現在のUSB Ethernet firmware targetは[`firmware/redpoint_pico`](firmware/redpoint_pico/README.md)です。
 対応pin・board条件を確認して使用してください。
 
@@ -88,7 +90,9 @@ The compact C.3 UI has passed builds, automated tests, local browser checks, and
 
 ### Hardware
 
-A TrackPoint-style PS/2 module, an RP2040 board such as the VCC-GND YD RP2040, three physical buttons, and level-conversion circuitry. The photo shows the Rev.B prototype.
+A TrackPoint-style PS/2 module, an RP2040 board such as the VCC-GND YD RP2040, and three physical buttons. The photo shows the Rev.B prototype, which includes level-conversion circuitry.
+The module in the current evaluation unit has been hardware-verified for PS/2 communication and pointer operation at 3.3 V; this confirmation applies only to that tested unit.
+Current wiring is CLK20 / DATA21, Left4 / Middle5 / Right3.
 The USB Ethernet firmware target is [`firmware/redpoint_pico`](firmware/redpoint_pico/README.md). Check its pin assignments and board requirements before use.
 
 ### Try the Configurator

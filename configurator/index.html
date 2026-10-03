@@ -42,6 +42,32 @@
           <div><label class="checkbox-label"><input id="pointerInvertX" type="checkbox" aria-describedby="pointerInvertX-confirmed"><span>Invert X</span></label><p id="pointerInvertX-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
           <div><label class="checkbox-label"><input id="pointerInvertY" type="checkbox" aria-describedby="pointerInvertY-confirmed"><span>Invert Y</span></label><p id="pointerInvertY-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
         </div>
+        <h3>Calibration</h3>
+        <p id="calibration-support" class="response-note">Physical correction · shared by Pointer and Wheel · before Invert</p>
+        <div class="sensitivity">
+          <label for="directionalGainLeft">Left</label>
+          <input id="directionalGainLeft" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="directionalGainLeft-confirmed">
+          <output id="directionalGainLeft-value" for="directionalGainLeft">—</output>
+          <p id="directionalGainLeft-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+        </div>
+        <div class="sensitivity">
+          <label for="directionalGainRight">Right</label>
+          <input id="directionalGainRight" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="directionalGainRight-confirmed">
+          <output id="directionalGainRight-value" for="directionalGainRight">—</output>
+          <p id="directionalGainRight-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+        </div>
+        <div class="sensitivity">
+          <label for="directionalGainUp">Up</label>
+          <input id="directionalGainUp" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="directionalGainUp-confirmed">
+          <output id="directionalGainUp-value" for="directionalGainUp">—</output>
+          <p id="directionalGainUp-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+        </div>
+        <div class="sensitivity">
+          <label for="directionalGainDown">Down</label>
+          <input id="directionalGainDown" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="directionalGainDown-confirmed">
+          <output id="directionalGainDown-value" for="directionalGainDown">—</output>
+          <p id="directionalGainDown-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+        </div>
       </fieldset>
     </section>
 
@@ -65,6 +91,42 @@
           <div><label class="checkbox-label"><input id="wheelInvertX" type="checkbox" aria-describedby="wheelInvertX-confirmed"><span>Invert X</span></label><p id="wheelInvertX-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
           <div><label class="checkbox-label"><input id="wheelInvertY" type="checkbox" aria-describedby="wheelInvertY-confirmed"><span>Invert Y</span></label><p id="wheelInvertY-confirmed" class="confirmed sr-only">デバイス確認値: —</p></div>
         </div>
+        <h3>Wheel response</h3>
+        <div class="sensitivity">
+          <label for="wheelLowGain">Slow</label>
+          <input id="wheelLowGain" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="wheelLowGain-confirmed">
+          <output id="wheelLowGain-value" for="wheelLowGain">—</output>
+          <p id="wheelLowGain-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+        </div>
+        <div class="sensitivity">
+          <label for="wheelHighGain">Fast</label>
+          <input id="wheelHighGain" type="range" min="0" max="10" step="0.01" value="1" aria-describedby="wheelHighGain-confirmed">
+          <output id="wheelHighGain-value" for="wheelHighGain">—</output>
+          <p id="wheelHighGain-confirmed" class="confirmed sr-only">デバイス確認値: —</p>
+        </div>
+        <div id="wheel-response-graph" hidden>
+          <svg id="wheel-response-preview" class="response-preview" viewBox="0 0 320 126" role="img" aria-label="Wheel response gain">
+            <text x="0" y="11" class="response-caption">Gain</text>
+            <text id="wheel-response-maximum" x="36" y="32" text-anchor="end">—</text>
+            <text x="36" y="98" text-anchor="end">0</text>
+            <path class="response-axes" d="M40,30 V94 H280" />
+            <path id="wheel-response-path" d="" />
+            <circle id="wheel-response-slow" r="3.5" cx="40" cy="94" />
+            <circle id="wheel-response-fast" r="3.5" cx="280" cy="94" />
+            <text id="wheel-response-slow-label" x="44" y="85">Slow</text>
+            <text id="wheel-response-fast-label" x="276" y="85" text-anchor="end">Fast</text>
+            <text x="40" y="107" text-anchor="middle">0</text>
+            <text x="160" y="107" text-anchor="middle">0.5</text>
+            <text x="280" y="107" text-anchor="middle">1</text>
+            <text x="160" y="122" text-anchor="middle">Normalized input magnitude</text>
+          </svg>
+          <table class="response-samples" aria-label="Wheel response sample gains">
+            <thead><tr><th scope="col">Input</th><th scope="col">0%</th><th scope="col">25%</th><th scope="col">50%</th><th scope="col">75%</th><th scope="col">100%</th></tr></thead>
+            <tbody><tr><th scope="row">Gain</th><td id="wheel-response-sample-0">—</td><td id="wheel-response-sample-1">—</td><td id="wheel-response-sample-2">—</td><td id="wheel-response-sample-3">—</td><td id="wheel-response-sample-4">—</td></tr></tbody>
+          </table>
+          <p class="response-note"><span id="wheel-response-state">Device values</span> · Response gain only; axis sensitivity and base scale apply separately.</p>
+        </div>
+        <p id="wheel-response-unavailable" class="response-note">Connect to load response</p>
       </fieldset>
     </section>
 

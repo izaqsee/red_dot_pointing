@@ -21,8 +21,8 @@ extern "C" void redpoint_irq_restore(uint32_t state) { restore_interrupts(state)
 extern "C" bool redpoint_button_pressed(unsigned index) { return index < 3 && !gpio_get(pins[index]); }
 extern "C" void redpoint_hardware_init(void) {
   for (uint pin : pins) { gpio_init(pin); gpio_set_dir(pin, GPIO_IN); gpio_pull_up(pin); }
-  gpio_init(REDPOINT_CLK); gpio_set_dir(REDPOINT_CLK, GPIO_IN);
-  gpio_init(REDPOINT_DATA); gpio_set_dir(REDPOINT_DATA, GPIO_IN);
+  gpio_init(REDPOINT_CLK); gpio_set_dir(REDPOINT_CLK, GPIO_IN); gpio_pull_up(REDPOINT_CLK);
+  gpio_init(REDPOINT_DATA); gpio_set_dir(REDPOINT_DATA, GPIO_IN); gpio_pull_up(REDPOINT_DATA);
 }
 extern "C" void redpoint_input_irq_enable(void) {
   gpio_set_irq_enabled_with_callback(REDPOINT_CLK, GPIO_IRQ_EDGE_FALL, true, gpioEdge);

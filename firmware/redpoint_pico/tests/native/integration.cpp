@@ -125,6 +125,7 @@ int main(int argc, char **argv) {
   assert(argc == 3); // Configurator directory, output GET capture.
   runHardwareTests();
   runScrollTests();
+  extern void runTransferTests(); runTransferTests();
   testReset(); lwip_init();
   ip4_addr_t ip, mask, gw;
   IP4_ADDR(&ip, 169, 254, 7, 1); IP4_ADDR(&mask, 255, 255, 0, 0); IP4_ADDR(&gw, 0, 0, 0, 0);
@@ -199,5 +200,19 @@ int main(int argc, char **argv) {
   assert(serial("GET\n") == initial);
   serial("SET pointerInvertX 1\n"); redpoint_config_init(); redpoint_config_end_boot();
   assert(equalDeviceConfig(config, beforeSave));
+  // Largest numeric/action response must fit both CDC and existing HTTP wire buffer.
+  for (const char *key : {"pointerSensitivity", "wheelSensitivityX", "wheelSensitivityY",
+       "directionalGainLeft", "directionalGainRight", "directionalGainUp", "directionalGainDown", "wheelLowGain", "wheelHighGain"}) {
+    const auto reply = bodyOf(post(std::string("SET ")+key+" 10"));
+    assert(reply.find("\"ok\":true") != std::string::npos);
+  }
+  for (const char *key : {"leftAction","middleAction","rightAction"}) post(std::string("SET ")+key+" key:0f:65");
+  const auto largest = bodyOf(post("GET"));
+  assert(largest == serial("GET\n"));
+  assert(largest.find("\"wheelHighGain\":10.000000") != std::string::npos);
+  assert(largest.find("\"rightAction\":\"key:0F:65\"}}") != std::string::npos);
+  post("SAVE"); redpoint_config_init(); redpoint_config_end_boot();
+  assert(config.directionalGainLeft==10 && config.wheelHighGain==10);
+  post("RESET"); assert(equalDeviceConfig(config,DEFAULT_CONFIG));
   std::cout << "PASS: malformed POST rejection, recovery, CDC partial writes/disconnect, HTTP/CDC physical effects and persisted reboot\n";
 }

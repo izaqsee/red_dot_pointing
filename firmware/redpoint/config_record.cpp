@@ -54,6 +54,12 @@ bool validDeviceConfig(const DeviceConfig &value) {
     value.pointerSensitivity >= MIN_SENSITIVITY && value.pointerSensitivity <= MAX_SENSITIVITY &&
     value.wheelSensitivityX >= MIN_SENSITIVITY && value.wheelSensitivityX <= MAX_SENSITIVITY &&
     value.wheelSensitivityY >= MIN_SENSITIVITY && value.wheelSensitivityY <= MAX_SENSITIVITY &&
+    isfinite(value.directionalGainLeft) && value.directionalGainLeft >= 0 && value.directionalGainLeft <= 10 &&
+    isfinite(value.directionalGainRight) && value.directionalGainRight >= 0 && value.directionalGainRight <= 10 &&
+    isfinite(value.directionalGainUp) && value.directionalGainUp >= 0 && value.directionalGainUp <= 10 &&
+    isfinite(value.directionalGainDown) && value.directionalGainDown >= 0 && value.directionalGainDown <= 10 &&
+    isfinite(value.wheelLowGain) && value.wheelLowGain >= 0 && value.wheelLowGain <= 10 &&
+    isfinite(value.wheelHighGain) && value.wheelHighGain >= 0 && value.wheelHighGain <= 10 &&
     validButtonAction(value.leftAction) && validButtonAction(value.middleAction) && validButtonAction(value.rightAction);
 }
 
@@ -77,6 +83,12 @@ bool encodeConfigRecord(const DeviceConfig &value, uint8_t *record) {
   putFloat(record + 32, value.wheelSensitivityY);
   record[36] = value.wheelInvertX ? 1 : 0;
   record[37] = value.wheelInvertY ? 1 : 0;
+  putFloat(record + 40, value.directionalGainLeft);
+  putFloat(record + 44, value.directionalGainRight);
+  putFloat(record + 48, value.directionalGainUp);
+  putFloat(record + 52, value.directionalGainDown);
+  putFloat(record + 56, value.wheelLowGain);
+  putFloat(record + 60, value.wheelHighGain);
   put32(record + CRC_OFFSET, crc32(record, CRC_OFFSET));
   return true;
 }
@@ -85,8 +97,8 @@ bool decodeConfigRecord(const uint8_t *record, DeviceConfig &value, size_t size)
   value = DEFAULT_CONFIG;
   if (size < CONFIG_RECORD_V1_SIZE || get32(record) != CONFIG_MAGIC) return false;
   const uint16_t version = get16(record + 4);
-  if (version != 1 && version != 2 && version != CONFIG_FORMAT_VERSION) return false;
-  const size_t length = version == 1 ? CONFIG_RECORD_V1_SIZE : version == 2 ? CONFIG_RECORD_V2_SIZE : CONFIG_RECORD_SIZE;
+  if (version != 1 && version != 2 && version != 3 && version != CONFIG_FORMAT_VERSION) return false;
+  const size_t length = version == 1 ? CONFIG_RECORD_V1_SIZE : version == 2 ? CONFIG_RECORD_V2_SIZE : version == 3 ? CONFIG_RECORD_V3_SIZE : CONFIG_RECORD_SIZE;
   const size_t crcOffset = length - sizeof(uint32_t);
   if (size < length || get16(record + 6) != length || get32(record + crcOffset) != crc32(record, crcOffset) ||
       record[16] > 1 || record[17] > 1 || record[18] != 0 || record[19] != 0) return false;
@@ -94,11 +106,19 @@ bool decodeConfigRecord(const uint8_t *record, DeviceConfig &value, size_t size)
   decoded.pointerSensitivity = getFloat(record + 8);
   decoded.wheelSensitivityX = getFloat(record + 12);
   decoded.wheelSensitivityY = decoded.wheelSensitivityX;
-  if (version == 3) {
+  if (version >= 3) {
     if (record[36] > 1 || record[37] > 1 || record[38] || record[39]) return false;
     decoded.wheelSensitivityY = getFloat(record + 32);
     decoded.wheelInvertX = record[36] == 1;
     decoded.wheelInvertY = record[37] == 1;
+  }
+  if (version >= 4) {
+    decoded.directionalGainLeft = getFloat(record + 40);
+    decoded.directionalGainRight = getFloat(record + 44);
+    decoded.directionalGainUp = getFloat(record + 48);
+    decoded.directionalGainDown = getFloat(record + 52);
+    decoded.wheelLowGain = getFloat(record + 56);
+    decoded.wheelHighGain = getFloat(record + 60);
   }
   decoded.pointerInvertX = record[16] == 1;
   decoded.pointerInvertY = record[17] == 1;

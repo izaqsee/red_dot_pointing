@@ -124,7 +124,10 @@ function fakePort(savedConfig = null, onSave = () => {}, withActions = false) {
           reply = '@CONFIG {"ok":false,"error":"INVALID_VALUE"}\n';
         } else {
           if (command === "SET") port.config[key] = key.endsWith("Action") ? value : key.includes("Invert") ? value === "1" : Number(value);
-          if (command === "RESET") port.config = withActions ? actionDefaults() : defaults();
+          if (command === "RESET") {
+            const gains = Object.hasOwn(port.config, "wheelLowGain") ? gainDefaults() : {};
+            port.config = { ...(withActions ? actionDefaults() : defaults()), ...gains };
+          }
           if (command === "SAVE") onSave({ ...port.config });
           reply = response(command, port.config);
         }
@@ -1118,4 +1121,114 @@ test("Wheel fine sensitivity sends precise SET, displays confirmed value, and sa
   assert.equal(port.config.wheelSensitivityX, 0.001);
   assert.equal(port.config.wheelSensitivityY, 0.001023);
   ui.el("disconnect").fire("click");
+});
+
+function gainDefaults() {
+  return { directionalGainLeft:1, directionalGainRight:1, directionalGainUp:1, directionalGainDown:1, wheelLowGain:1, wheelHighGain:1 };
+}
+test("v4 validates complete finite gain set; v3 remains supported", () => {
+  assert.ok(validConfig(defaults()));
+  assert.ok(validConfig({...defaults(),...gainDefaults()}));
+  for(const key of Object.keys(gainDefaults())) {
+    const partial={...defaults(),...gainDefaults()};delete partial[key];assert.ok(!validConfig(partial));
+    for(const bad of [NaN,Infinity,-.01,10.01,"1"])
+      assert.ok(!validConfig({...defaults(),...gainDefaults(),[key]:bad}));
+  }
+});
+test("v4 UI edits all six gains, previews drafts, Save persists and Reset confirms identity", async () => {
+  const ui=setupUI(true,false,port => {port.config={...gainDefaults(),...port.config};});
+  const port=await ui.connect();
+  for(const [i,key] of Object.keys(gainDefaults()).entries()) {
+    assert.equal(ui.el(key).disabled,false);
+    assert.equal(ui.el(`${key}-value`).textContent,"1.00×");
+    ui.el(key).value=String(1.5+i*.25);ui.el(key).fire("input");
+    await until(()=>port.commands.includes(`SET ${key} ${(1.5+i*.25).toFixed(2)}`));
+    await until(()=>ui.el(`${key}-confirmed`).textContent.includes((1.5+i*.25).toFixed(2)));
+  }
+  assert.match(ui.el("wheel-response-preview")["aria-label"],/slow 2.5, fast 2.75/);
+  assert.equal(ui.el("wheel-response-path").d, require("../configurator/app.js").wheelCurvePath(2.5,2.75));
+  ui.el("save").fire("click");await until(()=>ui.el("save-status").textContent==="Saved");
+  await ui.disconnect();const next=await ui.connect();
+  assert.equal(next.config.wheelHighGain,2.75);
+  ui.el("reset").fire("click");await until(()=>next.commands.includes("RESET"));
+  await until(()=>ui.el("wheelHighGain-value").textContent==="1.00×");
+  for(const key of Object.keys(gainDefaults()))assert.equal(next.config[key],1);
+  assert.equal(ui.el("save-status").textContent,"Unsaved changes");
+  await ui.disconnect();
+});
+test("old firmware disables only new gains and never sends unsupported SET",async()=>{
+  const ui=setupUI();const port=await ui.connect();
+  for(const key of Object.keys(gainDefaults())){
+    assert.equal(ui.el(key).disabled,true);ui.el(key).value="2";ui.el(key).fire("input");
+  }
+  assert.deepEqual(port.commands,["GET"]);
+  assert.match(ui.el("calibration-support").textContent,/Firmware update/);
+  await ui.disconnect();
+});
+test("response preview uses bounded smoothstep gain",()=>{
+ const {wheelCurvePath}=require("../configurator/app.js");
+ assert.match(wheelCurvePath(1,1),/^M40.000,30.000.*L280.000,30.000$/);
+ assert.match(wheelCurvePath(0,10),/^M40.000,94.000.*L160.000,62.000.*L280.000,30.000$/);
+});
+
+
+test("response graph and samples share firmware smoothstep: flat, accelerating, decelerating", () => {
+  const {wheelResponseGain, wheelCurvePreview} = require("../configurator/app.js");
+  for (const [low, high] of [[1,1],[0,0],[10,10],[.6,2],[2,.6],[0,10],[10,0]]) {
+    const preview = wheelCurvePreview(low,high);
+    const points = [...preview.path.matchAll(/[ML]([\d.]+),([\d.]+)/g)].map(m => [Number(m[1]),Number(m[2])]);
+    for (let i=0;i<65;i++) {
+      const t=i/64, expected=low+(high-low)*(3*t*t-2*t*t*t);
+      assert.ok(Math.abs(wheelResponseGain(t,low,high)-expected)<1e-12);
+      assert.ok(Math.abs(points[i][1]-(94-64*expected/preview.maximum))<=.000501);
+      if (i && low===high) assert.equal(points[i][1],points[i-1][1]);
+      if (i && low<high) assert.ok(points[i][1]<=points[i-1][1]);
+      if (i && low>high) assert.ok(points[i][1]>=points[i-1][1]);
+    }
+    for (const [i,sample] of preview.samples.entries()) {
+      assert.equal(sample.gain,wheelResponseGain(i/4,low,high));
+      assert.ok(Math.abs(sample.y-points[i*16][1])<=.000501);
+    }
+    assert.equal(wheelResponseGain(-1,low,high),low);
+    assert.ok(Math.abs(wheelResponseGain(2,low,high)-high)<1e-12);
+  }
+  assert.deepEqual(wheelCurvePreview(.6,2).samples.map(p=>Number(p.gain.toFixed(6))),[.6,.81875,1.3,1.78125,2]);
+});
+
+test("response preview restores GET, immediately previews both sliders while SET waits, and RESET restores device gains", async () => {
+  const {wheelCurvePath}=require("../configurator/app.js");
+  const ui=setupUI(true,false,port=>{port.config={...port.config,...gainDefaults(),wheelLowGain:.6,wheelHighGain:2};});
+  assert.equal(ui.el("wheel-response-graph").hidden,true);
+  const port=await ui.connect();
+  assert.equal(ui.el("wheel-response-path").d,wheelCurvePath(.6,2));
+  assert.equal(ui.el("wheel-response-graph").hidden,false);
+  assert.equal(ui.el("wheel-response-sample-2").textContent,"1.30×");
+  assert.equal(ui.el("wheel-response-slow-label").textContent,"Slow 0.60×");
+  assert.equal(ui.el("wheel-response-fast-label").textContent,"Fast 2.00×");
+  port.hold=true;
+  ui.el("wheelLowGain").value="3"; ui.el("wheelLowGain").fire("input");
+  assert.equal(ui.el("wheel-response-path").d,wheelCurvePath(3,2));
+  assert.equal(ui.el("wheel-response-state").textContent,"Preview · pending SET");
+  assert.match(ui.el("wheelLowGain-confirmed").textContent,/0.60×.*反映待ち/);
+  await until(()=>port.held.length===1);
+  ui.el("wheelHighGain").value=".5"; ui.el("wheelHighGain").fire("input");
+  assert.equal(ui.el("wheel-response-path").d,wheelCurvePath(3,.5));
+  port.emit(port.held.shift());
+  await until(()=>port.held.length===1);
+  assert.equal(ui.el("wheel-response-path").d,wheelCurvePath(3,.5));
+  port.hold=false; port.emit(port.held.shift());
+  await until(()=>ui.el("wheel-response-state").textContent==="Device values");
+  assert.equal(ui.el("wheel-response-sample-2").textContent,"1.75×");
+  ui.el("reset").fire("click");
+  await until(()=>ui.el("wheel-response-path").d===wheelCurvePath(1,1));
+  for(let i=0;i<5;i++)assert.equal(ui.el(`wheel-response-sample-${i}`).textContent,"1.00×");
+  await ui.disconnect();
+  assert.equal(ui.el("wheel-response-graph").hidden,true);
+});
+
+test("response preview never substitutes identity gains for unsupported firmware",async()=>{
+  const ui=setupUI();await ui.connect();
+  assert.equal(ui.el("wheel-response-graph").hidden,true);
+  assert.match(ui.el("wheel-response-unavailable").textContent,/supported firmware/);
+  await ui.disconnect();
 });

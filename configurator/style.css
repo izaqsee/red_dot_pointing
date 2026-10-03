@@ -61,3 +61,13 @@ select { font: inherit; font-size: 13px; border: 1px solid var(--line); border-r
   .button-row { grid-template-columns: 54px minmax(0, 1fr); gap: 0 8px; }
   .status { flex-basis: 100%; }
 }
+
+.response-preview { display: block; width: 100%; max-width: 100%; height: 126px; overflow: hidden; }
+.response-preview text { fill: var(--muted); font: 9px sans-serif; }
+.response-preview circle { fill: #175c8a; }
+.response-samples { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
+.response-samples th, .response-samples td { padding: 3px 1px; overflow-wrap: anywhere; }
+.response-samples th { font-weight: 600; }
+.response-preview path { fill: none; stroke: #175c8a; stroke-width: 2; }
+.response-preview .response-axes { stroke: #b8c2cb; stroke-width: 1; }
+.response-note { font-size: .75rem; color: #52616b; margin: .3rem 0; }
